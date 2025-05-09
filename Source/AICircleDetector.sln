@@ -1,0 +1,41 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35327.3
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AICircleDetector.WPF", "AICircleDetector.WPF\AICircleDetector.WPF.csproj", "{6B67EBA0-BE6A-4459-BA41-7FE495FA03F8}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AICircleDetector.AI", "AICircleDetector.AI\AICircleDetector.AI.csproj", "{DEC71F7D-5CC2-4675-A3C4-0CE923A0F67D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6B67EBA0-BE6A-4459-BA41-7FE495FA03F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6B67EBA0-BE6A-4459-BA41-7FE495FA03F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6B67EBA0-BE6A-4459-BA41-7FE495FA03F8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6B67EBA0-BE6A-4459-BA41-7FE495FA03F8}.Debug|x64.Build.0 = Debug|Any CPU
+		{6B67EBA0-BE6A-4459-BA41-7FE495FA03F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6B67EBA0-BE6A-4459-BA41-7FE495FA03F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6B67EBA0-BE6A-4459-BA41-7FE495FA03F8}.Release|x64.ActiveCfg = Release|Any CPU
+		{6B67EBA0-BE6A-4459-BA41-7FE495FA03F8}.Release|x64.Build.0 = Release|Any CPU
+		{DEC71F7D-5CC2-4675-A3C4-0CE923A0F67D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DEC71F7D-5CC2-4675-A3C4-0CE923A0F67D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DEC71F7D-5CC2-4675-A3C4-0CE923A0F67D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DEC71F7D-5CC2-4675-A3C4-0CE923A0F67D}.Debug|x64.Build.0 = Debug|Any CPU
+		{DEC71F7D-5CC2-4675-A3C4-0CE923A0F67D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DEC71F7D-5CC2-4675-A3C4-0CE923A0F67D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DEC71F7D-5CC2-4675-A3C4-0CE923A0F67D}.Release|x64.ActiveCfg = Release|x64
+		{DEC71F7D-5CC2-4675-A3C4-0CE923A0F67D}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {26A29223-6823-4E11-879E-F196878E6961}
+	EndGlobalSection
+EndGlobal

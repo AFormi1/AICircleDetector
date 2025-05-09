@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace AICircleDetector.WPF
+namespace AICircleDetector.WPF.Converter
 {
     public class ConsoleBindingWriter : TextWriter
     {

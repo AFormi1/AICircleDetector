@@ -1,4 +1,5 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using AICircleDetector.WPF.Converter;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using System.IO;
@@ -12,6 +13,9 @@ namespace AICircleDetector.WPF.ViewModels
 
     public partial class MainControlViewModel : BaseViewModel
     {
+
+        private CancellationTokenSource CancellationTokenSource = new CancellationTokenSource();
+        private CancellationToken CancelToken;
 
         [ObservableProperty]
         private ImageSource imageToDisplay;
@@ -78,8 +82,8 @@ namespace AICircleDetector.WPF.ViewModels
             TrainingButtonEnabled = false;
             IsBusyTraining = true;
 
-            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            CancellationTokenSource = new CancellationTokenSource();
+            CancelToken = CancellationTokenSource.Token;
 
             try
             {
@@ -101,8 +105,13 @@ namespace AICircleDetector.WPF.ViewModels
 
                     foreach (string subfolder in subfolders)
                     {
+                        if (CancelToken.IsCancellationRequested)
+                        {
+                            MessageBox.Show("Training abourted by User", "Training Cancel", MessageBoxButton.OK, MessageBoxImage.Information);
+                            return;
+                        }
                         // RUN: Training on background thread
-                        results.Add(await Task.Run(() => AI.Trainer.Train(cancellationToken, subfolder)));
+                        results.Add(await Task.Run(() => AI.Trainer.Train(CancelToken, subfolder)));
                     }
 
                     // Calculate the average loss and accuracy from the results
@@ -167,23 +176,19 @@ namespace AICircleDetector.WPF.ViewModels
 
             ConsoleText = string.Empty;
 
-            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-
             try
             {
                 // SETUP: Redirect console output to ConsoleText
                 Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
 
                 // RUN: Training on background thread
-                AI.AIResult result = await Task.Run(() => AI.Predictor.Predict(cancellationToken, imageURL));
+                AI.AIResult result = await Task.Run(() => AI.Predictor.Predict(imageURL));
 
                 // RESULT: Show success/error popup
                 MessageBox.Show(result.Message,
                     result.Success ? "Success" : "Error",
                     MessageBoxButton.OK,
                     result.Success ? MessageBoxImage.Information : MessageBoxImage.Error);
-
             }               
 
             catch (Exception ex)
@@ -196,7 +201,11 @@ namespace AICircleDetector.WPF.ViewModels
                 IsBusyTraining = false;
             }
         }
-       
+        [RelayCommand]
+        public void CancelTrainAI()
+        {
+            CancellationTokenSource.Cancel();
+        }
 
     }
 

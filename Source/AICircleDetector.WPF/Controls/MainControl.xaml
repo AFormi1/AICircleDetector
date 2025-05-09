@@ -63,7 +63,15 @@
             <Button Content="Train AI" 
                     Grid.Column="2" Grid.Row="0"
                     IsEnabled="{Binding TrainingButtonEnabled}"
-                    Command="{Binding TrainAICommand}" />
+                    Command="{Binding TrainAICommand}"
+                    Width="80"
+                    HorizontalAlignment="Left"/>
+            
+            <Button Content="Cancel" 
+                    Grid.Column="2" Grid.Row="0"
+                    Command="{Binding CancelTrainAICommand}" 
+                    Width="80"
+                    HorizontalAlignment="Right"/>
 
             <Label Content="AI is training ..."
                    Grid.Column="2" Grid.Row="2"       

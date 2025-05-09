@@ -8,7 +8,7 @@ namespace AICircleDetector.AI
 {
     public static class Predictor
     {
-        public static async Task<AIResult> Predict(CancellationToken cancellationToken, string imagePath)
+        public static async Task<AIResult> Predict(string imagePath)
         {
             AIResult result = new();
 
@@ -31,19 +31,10 @@ namespace AICircleDetector.AI
                 NDArray numpyArray = output.numpy();
                 Console.WriteLine($"Raw output: {numpyArray}, shape: {numpyArray.shape}");
 
-                // Handle possible output shapes: [1], [1, 1], or unexpected
-                float rawValue;
-                if (numpyArray.size == 1)
-                    rawValue = numpyArray[0];
-                else if (numpyArray.ndim == 2)
-                    rawValue = numpyArray[0, 0];
-                else
-                    throw new Exception("Unexpected model output shape");
-
-                float predictedCircles = rawValue * AIConfig.MaxCircles;
+                float predictedCircles = numpyArray[0, 0] * AIConfig.MaxCircles;
 
                 result.Success = true;
-                result.Message = $"Predicted Number of Circles: {predictedCircles:F2}";
+                result.Message = $"Predicted Number of Circles: {predictedCircles:F4}";
                 Console.WriteLine(result.Message);
             }
             catch (Exception ex)

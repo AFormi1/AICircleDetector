@@ -4,6 +4,8 @@ using Tensorflow;
 using Tensorflow.NumPy;
 using System.Drawing;
 using Tensorflow.Keras;
+using System.Threading;
+using OneOf.Types;
 
 namespace AICircleDetector.AI
 {
@@ -17,8 +19,20 @@ namespace AICircleDetector.AI
             {
                 string csvPath = Path.Combine(basepath, "labels.csv");
 
-                (NDArray images, NDArray labels) = LoadDataset(csvPath, basepath);
-                result = TrainModel(images, labels);
+                (NDArray images, NDArray labels) = LoadDataset(cancellationToken, csvPath, basepath);
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return result;
+                }
+
+                result = TrainModel(cancellationToken, images, labels);
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return result;
+                }
+
             }
             catch (Exception ex)
             {
@@ -33,7 +47,7 @@ namespace AICircleDetector.AI
 
 
 
-        public static (NDArray images, NDArray labels) LoadDataset(string csvPath, string imagesFolder)
+        public static (NDArray images, NDArray labels) LoadDataset(CancellationToken cancellationToken, string csvPath, string imagesFolder)
         {
             string[] lines = File.ReadAllLines(csvPath).Skip(1).ToArray(); // Skip header
             int count = lines.Length;
@@ -43,6 +57,11 @@ namespace AICircleDetector.AI
 
             for (int i = 0; i < count; i++)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return (0.0, 0.0);
+                }
+
                 string[] parts = lines[i].Split(';');
                 string filename = parts[0];
                 int label = int.Parse(parts[1]);
@@ -76,7 +95,7 @@ namespace AICircleDetector.AI
         }
 
 
-        public static AIResult TrainModel(NDArray images, NDArray labels)
+        public static AIResult TrainModel(CancellationToken cancellationToken, NDArray images, NDArray labels)
         {
             var keras = Tensorflow.KerasApi.keras;
             var layers = keras.layers;
@@ -120,6 +139,11 @@ namespace AICircleDetector.AI
             int totalEpochs = 50;
             for (int epoch = 0; epoch < totalEpochs; epoch++)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return new AIResult();
+                }
+
                 var history = model.fit(images, labels, batch_size: 25, epochs: 1, validation_split: 0.2f, verbose: 1);
                 float valLoss = history.history["val_loss"].Last(); // Get validation loss for current epoch
 

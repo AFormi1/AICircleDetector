@@ -13,7 +13,7 @@ namespace AICircleDetector.WPF.ViewModels
 
     public partial class MainControlViewModel : BaseViewModel
     {
-        private int TrainingSetsCount = 2;
+        private int TrainingSetsCount = 1;
 
         private CancellationTokenSource CancellationTokenSource = new CancellationTokenSource();
         private CancellationToken CancelToken;
@@ -62,7 +62,7 @@ namespace AICircleDetector.WPF.ViewModels
 
             for (int i = 0; i < TrainingSetsCount; i++)
             {
-                await Task.Run(() => AI.TrainingDataBuilder.CreateTrainingData(imageCount: 10));
+                await Task.Run(() => AI.TrainingDataBuilder.CreateTrainingData(imageCount: 1000));
             }
 
 

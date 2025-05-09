@@ -21,8 +21,6 @@ namespace AICircleDetector.AI
 
                 Console.WriteLine("Predictor: loading model...");
                 var keras = Tensorflow.KerasApi.keras;
-
-
                 var model = keras.models.load_model(AIConfig.TensorFlowModel);
 
                 Console.WriteLine("Predictor: running prediction...");
@@ -31,6 +29,7 @@ namespace AICircleDetector.AI
                 NDArray numpyArray = output.numpy();
                 Console.WriteLine($"Raw output: {numpyArray}, shape: {numpyArray.shape}");
 
+                // Get the predicted number of circles (raw float value)
                 float predictedCircles = numpyArray[0, 0] * AIConfig.MaxCircles;
 
                 result.Success = true;
@@ -57,12 +56,17 @@ namespace AICircleDetector.AI
                 for (int x = 0; x < size; x++)
                 {
                     Color pixel = resized.GetPixel(x, y);
-                    float gray = (pixel.R + pixel.G + pixel.B) / 3f / 255f;
+                    float gray = (pixel.R + pixel.G + pixel.B) / 3f; // Grayscale conversion
                     data[y, x, 0] = gray;
                 }
 
             NDArray array = np.array(data, dtype: np.float32);
+
+            // Normalize the image to [0, 1]
+            array = array / 255.0f;
+
             return np.expand_dims(array, 0); // Shape: [1, H, W, 1]
         }
+
     }
 }

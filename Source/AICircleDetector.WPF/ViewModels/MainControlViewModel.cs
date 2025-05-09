@@ -13,6 +13,7 @@ namespace AICircleDetector.WPF.ViewModels
 
     public partial class MainControlViewModel : BaseViewModel
     {
+        private int TrainingSetsCount = 3;
 
         private CancellationTokenSource CancellationTokenSource = new CancellationTokenSource();
         private CancellationToken CancelToken;
@@ -59,9 +60,9 @@ namespace AICircleDetector.WPF.ViewModels
             DataButtonEnabled = false;
             IsBusyDataCreation = true;
 
-            for (int i = 0; i < 50; i++)
+            for (int i = 0; i < TrainingSetsCount; i++)
             {
-                await Task.Run(() => AI.TrainingDataBuilder.CreateTrainingData(imageCount: 50));
+                await Task.Run(() => AI.TrainingDataBuilder.CreateTrainingData(imageCount: 1000));
             }
 
 
@@ -98,7 +99,8 @@ namespace AICircleDetector.WPF.ViewModels
                     string folderName = folderDialog.FolderName;
 
                     // SETUP: Redirect console output to ConsoleText
-                    Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+                    if (false)
+                        Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
 
                     // Get the first-level subfolders within the selected folder
                     string[] subfolders = Directory.GetDirectories(folderName);
@@ -189,7 +191,7 @@ namespace AICircleDetector.WPF.ViewModels
                     result.Success ? "Success" : "Error",
                     MessageBoxButton.OK,
                     result.Success ? MessageBoxImage.Information : MessageBoxImage.Error);
-            }               
+            }
 
             catch (Exception ex)
             {
@@ -205,6 +207,9 @@ namespace AICircleDetector.WPF.ViewModels
         public void CancelTrainAI()
         {
             CancellationTokenSource.Cancel();
+
+            ImageToDisplay = null;
+            imageURL = string.Empty;
         }
 
     }

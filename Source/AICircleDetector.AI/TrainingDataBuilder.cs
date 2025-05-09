@@ -25,7 +25,7 @@ namespace AICircleDetector.AI
 
                 for (int i = 0; i < imageCount; i++)
                 {
-                    int ringCount = _rand.Next(1, AIConfig.MaxCircles);
+                    int ringCount = _rand.Next(AIConfig.MinCircles, AIConfig.MaxCircles + 1);
                     string fileName = $"log_{i:D3}.png";
                     string filePath = Path.Combine(_currentImageDir!, fileName);
 

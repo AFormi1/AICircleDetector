@@ -15,7 +15,8 @@ namespace AICircleDetector.AI
 
 
         public static string TensorFlowModel { get; private set; } = "circle_count_model";
-        public static int MaxCircles { get; private set; } = 50;
+        public static int MaxCircles { get; private set; } = 10;
+        public static int MinCircles { get; private set; } = 0;
         public static int ImageSize { get; private set; } = 128;
     }
 }

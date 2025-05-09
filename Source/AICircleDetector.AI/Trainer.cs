@@ -66,7 +66,7 @@ namespace AICircleDetector.AI
                 string filename = parts[0];
                 int label = int.Parse(parts[1]);
 
-                if (label >= AIConfig.MaxCircles)
+                if (label > AIConfig.MaxCircles)
                     throw new Exception($"Label {label} exceeds MaxCircleClasses ({AIConfig.MaxCircles}).");
 
                 string imagePath = Path.Combine(imagesFolder, filename);
@@ -83,7 +83,7 @@ namespace AICircleDetector.AI
                     }
                 }
 
-                labelsArray[i] = label / AIConfig.MaxCircles; // normalize label to 0.0–1.0 range if max circles ~50
+                labelsArray[i] = label / (float)AIConfig.MaxCircles;
             }
 
             Console.WriteLine("Trainer.LoadDataset() completed");
@@ -104,7 +104,7 @@ namespace AICircleDetector.AI
             var input = keras.Input(shape: (AIConfig.ImageSize, AIConfig.ImageSize, 1));
 
             // First convolutional layer
-            var x = layers.Conv2D(32, 3, activation: keras.activations.Relu).Apply(input);
+            var x = layers.Conv2D(64, 3, activation: keras.activations.Relu).Apply(input);
             x = layers.BatchNormalization().Apply(x);
             x = layers.MaxPooling2D().Apply(x);
 
@@ -115,22 +115,32 @@ namespace AICircleDetector.AI
 
             // Flatten the output and apply fully connected layers with regularization
             x = layers.Flatten().Apply(x);
-            x = layers.Dense(128, activation: keras.activations.Relu).Apply(x);
+            x = layers.Dense(256, activation: keras.activations.Relu).Apply(x);  // Increase neurons here
             x = layers.Dropout(0.5f).Apply(x);
 
 
             // Output layer (single value for regression)
-            var output = layers.Dense(1).Apply(x);
+            //var output = layers.Dense(1, activation: keras.activations.Linear).Apply(x);
+            var output = layers.Dense(1).Apply(x);  // No activation function for regression output
+
 
             var model = keras.Model(input, output);
 
-            // Compile with MSE and MAE
-            model.compile(optimizer: keras.optimizers.Adam(),
-                          loss: keras.losses.MeanSquaredError(),
-                          metrics: new[] { "mae" });
+            //model.compile(
+            //    optimizer: keras.optimizers.Adam(),
+            //    loss: keras.losses.MeanSquaredError(),
+            //    metrics: new[] { "mae" }
+            //);
+
+            model.compile(
+                optimizer: keras.optimizers.Adam(learning_rate: 0.001f),
+                loss: keras.losses.MeanAbsoluteError(),
+                metrics: new[] { "mae" }  // Keep MAE as a metric
+            );
+
 
             // Initialize early stopping parameters
-            int patience = 10;
+            int patience = 15;
             int bestEpoch = 0;
             float bestValLoss = float.MaxValue;
             int epochsWithoutImprovement = 0;
@@ -144,7 +154,7 @@ namespace AICircleDetector.AI
                     return new AIResult();
                 }
 
-                var history = model.fit(images, labels, batch_size: 25, epochs: 1, validation_split: 0.2f, verbose: 1);
+                var history = model.fit(images, labels, batch_size: 50, epochs: 1, validation_split: 0.2f, verbose: 1);
                 float valLoss = history.history["val_loss"].Last(); // Get validation loss for current epoch
 
                 // Early stopping check
@@ -184,11 +194,6 @@ namespace AICircleDetector.AI
                 MAE = finalMAE
             };
         }
-
-
-
-
-
 
 
 

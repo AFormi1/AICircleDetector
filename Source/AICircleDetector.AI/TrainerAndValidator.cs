@@ -291,30 +291,10 @@ namespace AICircleDetector.AI
                 metrics: new[] { "mean_absolute_error" }
             );
 
-            int epochs = 500;
-            int batch = 128;
+            int batch = 128;                    
+            int epochs = 200;
 
-            // 2. Prepare CallbackParams manually
-            var callbackParams = new CallbackParams
-            {
-                Model = model,
-                Verbose = 1,
-                Epochs = epochs, // match your training epochs
-                Steps = xTrain.shape[0] / batch // assuming batch_size = 64
-            };
-
-            // 3. Create EarlyStopping using CallbackParams
-            var earlyStopping = new EarlyStopping(
-                parameters: callbackParams,
-                monitor: "loss",
-                min_delta: 0.001f,
-                patience: 10,
-                verbose: 1,
-                mode: "min",
-                restore_best_weights: true
-            );
-
-            // 4. Train with callbacks
+            // 4. Train
             model.fit(
                 xTrain, yTrain,
                 batch_size: batch,
@@ -323,7 +303,6 @@ namespace AICircleDetector.AI
                 workers: Environment.ProcessorCount,  // Use all available threads
                 max_queue_size: 32,                   // Increase input queue size
                 shuffle: true                         // Ensures better generalization
-                //callbacks: new List<ICallback> { earlyStopping }
             );
 
             Console.WriteLine("Training complete.");

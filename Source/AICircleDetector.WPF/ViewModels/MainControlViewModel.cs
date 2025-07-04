@@ -3,6 +3,7 @@ using AICircleDetector.WPF.Converter;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,6 +26,9 @@ namespace AICircleDetector.WPF.ViewModels
         private string imageURL = string.Empty;
 
         [ObservableProperty]
+        private bool consoleEnabled = true;
+
+        [ObservableProperty]
         private bool dataButtonEnabled = true;
 
         [ObservableProperty]
@@ -34,8 +38,8 @@ namespace AICircleDetector.WPF.ViewModels
         private bool trainingButtonEnabled = true;
 
         [ObservableProperty]
-        private bool isBusyTraining = false;    
-        
+        private bool isBusyTraining = false;
+
         [ObservableProperty]
         private bool validateButtonEnabled = true;
 
@@ -46,7 +50,7 @@ namespace AICircleDetector.WPF.ViewModels
         public MainControlViewModel()
         {
             ConsoleBindingWriter writer = new ConsoleBindingWriter(AppendConsoleLine);
-            Console.SetOut(writer);       
+            Console.SetOut(writer);
         }
 
         private void AppendConsoleLine(string line)
@@ -64,11 +68,11 @@ namespace AICircleDetector.WPF.ViewModels
             DataButtonEnabled = false;
             IsBusyDataCreation = true;
 
-            Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+            EnableConsole();
 
             for (int i = 0; i < TrainingSetsCount; i++)
             {
-                await Task.Run(async() => await AI.TrainingDataBuilder.CreateTrainingData(imageCount: 50000));
+                await Task.Run(async () => await AI.TrainingDataBuilder.CreateTrainingData(imageCount: 1000));
             }
 
 
@@ -103,24 +107,24 @@ namespace AICircleDetector.WPF.ViewModels
 
                 if (folderDialog.ShowDialog() == true)
                 {
-                    Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
-
-                    Console.WriteLine("Logging disabled due to speed up the process");
-
-                    Console.SetOut(TextWriter.Null);
+                    EnableConsole();
 
                     string folderName = folderDialog.FolderName;
-                                  
+
+                    Stopwatch stopwatch = new Stopwatch();
+                    stopwatch.Start();
+
                     results.Add(await Task.Run(() => AI.TrainerAndValidator.Train(CancelToken, folderName)));
+
+                    stopwatch.Stop();
 
                     // Calculate the average loss and accuracy from the results
                     float res1 = results.Average(result => result.Loss);
                     float res2 = results.Average(result => result.MAE);
 
-                    // Prepare the result message
-                    Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+                    EnableConsole();
 
-                    string message = $"Training complete!\nAverage Loss: {res1:F4}\nAverage MAE: {res2:F4}";
+                    string message = $"Training complete!\nAverage Loss: {res1:F4}\nAverage MAE: {res2:F4}\r\nTime Elapsed: {stopwatch.Elapsed.TotalSeconds} [s]";
 
                     // Determine whether the overall result is a success or error
                     bool allSuccessful = results.All(result => result.Success);
@@ -146,7 +150,20 @@ namespace AICircleDetector.WPF.ViewModels
                 IsBusyTraining = false;
             }
         }
-        
+
+        private void EnableConsole()
+        {
+            if (ConsoleEnabled)
+            {
+                Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+            }
+            else
+            {
+                Console.WriteLine("Logging disabled due to speed up the process");
+                Console.SetOut(TextWriter.Null);
+            }
+        }
+
         [RelayCommand]
         public async Task ValidateAI()
         {
@@ -171,9 +188,9 @@ namespace AICircleDetector.WPF.ViewModels
 
                 if (folderDialog.ShowDialog() == true)
                 {
-                    Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+                    EnableConsole();
 
-                    string folderName = folderDialog.FolderName;       
+                    string folderName = folderDialog.FolderName;
 
                     results.Add(await Task.Run(() => AI.TrainerAndValidator.Validate(CancelToken, folderName)));
 
@@ -242,7 +259,7 @@ namespace AICircleDetector.WPF.ViewModels
 
             try
             {
-                Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+                EnableConsole();
 
                 // RUN: Training on background thread
                 AI.AIResult result = await Task.Run(() => AI.Predictor.Predict(imageURL));

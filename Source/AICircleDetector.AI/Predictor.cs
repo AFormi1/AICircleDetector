@@ -50,7 +50,9 @@ namespace AICircleDetector.AI
      
 
                 Console.WriteLine("Predictor: running prediction...");
-                var output = model.predict(inputTensor);
+                var output = model.predict(inputTensor, use_multiprocessing: true,
+                workers: Environment.ProcessorCount,  // Use all available threads
+                max_queue_size: 32);                  // Ensures better generalization);
 
                 //NDArray numpyArray = output.numpy();
                 //Console.WriteLine($"Raw output: {numpyArray}, shape: {numpyArray.shape}");

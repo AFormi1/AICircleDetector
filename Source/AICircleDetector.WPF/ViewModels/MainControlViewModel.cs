@@ -104,7 +104,11 @@ namespace AICircleDetector.WPF.ViewModels
                 if (folderDialog.ShowDialog() == true)
                 {
                     Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
-                       
+
+                    Console.WriteLine("Logging disabled due to speed up the process");
+
+                    Console.SetOut(TextWriter.Null);
+
                     string folderName = folderDialog.FolderName;
                                   
                     results.Add(await Task.Run(() => AI.TrainerAndValidator.Train(CancelToken, folderName)));
@@ -114,6 +118,8 @@ namespace AICircleDetector.WPF.ViewModels
                     float res2 = results.Average(result => result.MAE);
 
                     // Prepare the result message
+                    Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+
                     string message = $"Training complete!\nAverage Loss: {res1:F4}\nAverage MAE: {res2:F4}";
 
                     // Determine whether the overall result is a success or error

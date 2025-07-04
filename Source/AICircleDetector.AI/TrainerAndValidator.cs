@@ -292,6 +292,7 @@ namespace AICircleDetector.AI
             );
 
             int epochs = 500;
+            int batch = 128;
 
             // 2. Prepare CallbackParams manually
             var callbackParams = new CallbackParams
@@ -299,7 +300,7 @@ namespace AICircleDetector.AI
                 Model = model,
                 Verbose = 1,
                 Epochs = epochs, // match your training epochs
-                Steps = xTrain.shape[0] / 64 // assuming batch_size = 64
+                Steps = xTrain.shape[0] / batch // assuming batch_size = 64
             };
 
             // 3. Create EarlyStopping using CallbackParams
@@ -316,8 +317,12 @@ namespace AICircleDetector.AI
             // 4. Train with callbacks
             model.fit(
                 xTrain, yTrain,
-                batch_size: 64,
-                epochs: epochs//,
+                batch_size: batch,
+                epochs: epochs,
+                use_multiprocessing: true,
+                workers: Environment.ProcessorCount,  // Use all available threads
+                max_queue_size: 32,                   // Increase input queue size
+                shuffle: true                         // Ensures better generalization
                 //callbacks: new List<ICallback> { earlyStopping }
             );
 
@@ -328,7 +333,9 @@ namespace AICircleDetector.AI
 
             model.save(AIConfig.TrainingModelFullURL);
 
-            var evalResult = model.evaluate(xTrain, yTrain, verbose: 0);
+            var evalResult = model.evaluate(xTrain, yTrain, verbose: 0, use_multiprocessing: true,
+                workers: Environment.ProcessorCount,  // Use all available threads
+                max_queue_size: 32); //Increase input queue size
 
             // Safely retrieve loss and accuracy by key
             float valLoss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;

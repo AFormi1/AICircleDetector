@@ -1,4 +1,5 @@
-﻿using AICircleDetector.WPF.Converter;
+﻿using AICircleDetector.AI;
+using AICircleDetector.WPF.Converter;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -33,7 +34,10 @@ namespace AICircleDetector.WPF.ViewModels
         private bool trainingButtonEnabled = true;
 
         [ObservableProperty]
-        private bool isBusyTraining = false;
+        private bool isBusyTraining = false;    
+        
+        [ObservableProperty]
+        private bool validateButtonEnabled = true;
 
         [ObservableProperty]
         private string consoleText = string.Empty;
@@ -62,11 +66,11 @@ namespace AICircleDetector.WPF.ViewModels
 
             for (int i = 0; i < TrainingSetsCount; i++)
             {
-                await Task.Run(() => AI.TrainingDataBuilder.CreateTrainingData(imageCount: 1000));
+                await Task.Run(() => AI.TrainingDataBuilder.CreateTrainingData(imageCount: 400));
             }
 
 
-            MessageBox.Show("Testfiles have been created successfully", "Result", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show($"Testfiles have been created successfully to\r\n{Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName)}", "Result", MessageBoxButton.OK, MessageBoxImage.Information);
 
             DataButtonEnabled = true;
             IsBusyDataCreation = false;
@@ -81,6 +85,7 @@ namespace AICircleDetector.WPF.ViewModels
             ConsoleText = string.Empty;
 
             TrainingButtonEnabled = false;
+            ValidateButtonEnabled = false;
             IsBusyTraining = true;
 
             CancellationTokenSource = new CancellationTokenSource();
@@ -101,27 +106,15 @@ namespace AICircleDetector.WPF.ViewModels
                     // SETUP: Redirect console output to ConsoleText
                     if (false)
                         Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
-
-                    // Get the first-level subfolders within the selected folder
-                    string[] subfolders = Directory.GetDirectories(folderName);
-
-                    foreach (string subfolder in subfolders)
-                    {
-                        if (CancelToken.IsCancellationRequested)
-                        {
-                            MessageBox.Show("Training abourted by User", "Training Cancel", MessageBoxButton.OK, MessageBoxImage.Information);
-                            return;
-                        }
-                        // RUN: Training on background thread
-                        results.Add(await Task.Run(() => AI.Trainer.Train(CancelToken, subfolder)));
-                    }
+                  
+                    results.Add(await Task.Run(() => AI.Trainer.Train(CancelToken, folderName)));
 
                     // Calculate the average loss and accuracy from the results
                     float averageLoss = results.Average(result => result.Loss);
-                    float averageMAE = results.Average(result => result.MAE);
+                    float averageAccuracy = results.Average(result => result.Accuracy);
 
                     // Prepare the result message
-                    string message = $"Training complete!\nAverage Loss: {averageLoss:F4}\nAverage Mean Absolute Error: {averageMAE:F4}";
+                    string message = $"Training complete!\nAverage Loss: {averageLoss:F4}\nAverage Accuracy: {averageAccuracy:F4}";
 
                     // Determine whether the overall result is a success or error
                     bool allSuccessful = results.All(result => result.Success);
@@ -143,6 +136,73 @@ namespace AICircleDetector.WPF.ViewModels
             finally
             {
                 TrainingButtonEnabled = true;
+                ValidateButtonEnabled = true;
+                IsBusyTraining = false;
+            }
+        }
+        
+        [RelayCommand]
+        public async Task ValidateAI()
+        {
+            List<AI.AIResult> results = new();
+
+            ConsoleText = string.Empty;
+
+            TrainingButtonEnabled = false;
+            ValidateButtonEnabled = false;
+            IsBusyTraining = true;
+
+            CancellationTokenSource = new CancellationTokenSource();
+            CancelToken = CancellationTokenSource.Token;
+
+            try
+            {
+                //todo
+
+                //OpenFolderDialog folderDialog = new OpenFolderDialog
+                //{
+                //    Title = "Select Folder with training folders",
+                //    InitialDirectory = AppDomain.CurrentDomain.BaseDirectory
+                //};
+
+                //if (folderDialog.ShowDialog() == true)
+                //{
+                //    string folderName = folderDialog.FolderName;
+
+                //    // SETUP: Redirect console output to ConsoleText
+                //    if (false)
+                //        Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+                  
+                //    results.Add(await Task.Run(() => AI.Trainer.Train(CancelToken, folderName)));
+
+                //    // Calculate the average loss and accuracy from the results
+                //    float averageLoss = results.Average(result => result.Loss);
+                //    float averageAccuracy = results.Average(result => result.Accuracy);
+
+                //    // Prepare the result message
+                //    string message = $"Training complete!\nAverage Loss: {averageLoss:F4}\nAverage Accuracy: {averageAccuracy:F4}";
+
+                //    // Determine whether the overall result is a success or error
+                //    bool allSuccessful = results.All(result => result.Success);
+                //    string title = allSuccessful ? "Success" : "Error";
+                //    MessageBoxImage icon = allSuccessful ? MessageBoxImage.Information : MessageBoxImage.Error;
+
+                //    // Show success/error popup with averages
+                //    MessageBox.Show(message, title, MessageBoxButton.OK, icon);
+                //}
+                //else
+                //{
+                //    throw new OperationCanceledException("Folder selection was cancelled.");
+                //}
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                TrainingButtonEnabled = true;
+                ValidateButtonEnabled = true;
                 IsBusyTraining = false;
             }
         }
@@ -200,6 +260,7 @@ namespace AICircleDetector.WPF.ViewModels
             finally
             {
                 TrainingButtonEnabled = true;
+                ValidateButtonEnabled = true;
                 IsBusyTraining = false;
             }
         }
@@ -210,6 +271,10 @@ namespace AICircleDetector.WPF.ViewModels
 
             ImageToDisplay = null;
             imageURL = string.Empty;
+
+            TrainingButtonEnabled = true;
+            ValidateButtonEnabled = true;
+            IsBusyTraining = false;
         }
 
     }

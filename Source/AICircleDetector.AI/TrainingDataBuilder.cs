@@ -1,5 +1,7 @@
 ﻿using AICircleDetector.AI;
+using Force.Crc32;
 using OneOf.Types;
+using ProtoBuf;
 using SkiaSharp;
 using System;
 using System.Drawing;
@@ -17,7 +19,6 @@ namespace AICircleDetector.AI
             try
             {
                 string _currentGUID = Guid.NewGuid().ToString();
-
 
                 string _currentSessionDir = Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName, _currentGUID);
                 string _currentImageDir = Path.Combine(_currentSessionDir, AIConfig.ImageFolderName);
@@ -48,8 +49,8 @@ namespace AICircleDetector.AI
                 CreateLabelMap(labelMapPath!);
                 var classMap = ParseLabelMap(labelMapPath);
 
-                CreateSerializedTFRecord(trainListPath, _currentImageDir, _currentAnnotationDir, classMap, "train_data.tfrecord");
-                CreateSerializedTFRecord(valListPath, _currentImageDir, _currentAnnotationDir, classMap, "val_data.tfrecord");
+                CreateSerializedTFRecord(trainListPath, _currentImageDir, _currentAnnotationDir, classMap, AIConfig.TrainDataName);
+                CreateSerializedTFRecord(valListPath, _currentImageDir, _currentAnnotationDir, classMap, AIConfig.ValDataName);
 
 
                 return new TrainingDataBuilderResult
@@ -91,76 +92,83 @@ namespace AICircleDetector.AI
 
         public static void CreateSerializedTFRecord(string dataListPath, string imagesPath, string annotationsPath, Dictionary<int, string> classMap, string tfRecordFileName)
         {
-            var imageFilenames = File.ReadAllLines(dataListPath); // Read the list of filenames from the text file
-
+            var imageFilenames = File.ReadAllLines(dataListPath);
             string tfRecordFilePath = Path.Combine(Path.GetDirectoryName(dataListPath), tfRecordFileName);
 
-            // Step 5: Create the TFRecord file
-            using (var writer = new FileStream(tfRecordFilePath, FileMode.CreateNew, FileAccess.Write)) // Use TensorFlow's TFRecord Writer (or a similar writer)
+            using var writer = new FileStream(tfRecordFilePath, FileMode.Create, FileAccess.Write);
+
+            foreach (var filename in imageFilenames)
             {
-                writer.SetLength(0);
+                string imagePath = Path.Combine(imagesPath, filename);
+                string annotationPath = Path.Combine(annotationsPath, Path.ChangeExtension(filename, ".xml"));
 
-                foreach (var filename in imageFilenames)
+                if (!File.Exists(imagePath) || !File.Exists(annotationPath))
                 {
-
-                    // Construct the paths for the image and its corresponding annotation
-                    string imagePath = Path.Combine(imagesPath, filename);
-                    string annotationPath = Path.Combine(annotationsPath, Path.ChangeExtension(filename, ".xml")); // Assuming XML annotation files
-
-                    // Debugging: Check if the image and annotation files exist
-                    if (!File.Exists(imagePath))
-                    {
-                        Console.WriteLine($"Image file not found: {imagePath}");
-                        continue;
-                    }
-
-                    if (!File.Exists(annotationPath))
-                    {
-                        Console.WriteLine($"Annotation file not found: {annotationPath}");
-                        continue;
-                    }
-
-                    // Step 6: Load and process the image and annotation
-                    // Parse XML annotation and create TFRecord example
-                    int label = GetLabelFromAnnotation(annotationPath, classMap); // Implement your own logic to get the label from XML
-
-                    using Bitmap bmp = new Bitmap(imagePath);
-                    using Bitmap resized = new Bitmap(bmp, new Size(AIConfig.ImageSize, AIConfig.ImageSize));
-
-                    // Convert the image to byte array
-                    byte[] imageBytes = ImageToByteArray(resized);
-
-                    // Create the image and label features
-                    Feature imageFeature = TfFeatureHelper.Bytes(imageBytes);
-                    Feature labelFeature = TfFeatureHelper.Int64(label);
-
-                    // Create the features and the Example object
-                    Features features = new Features();
-                    features.feature.Add("image", imageFeature);
-                    features.feature.Add("label", labelFeature);
-
-                    Example example = new Example
-                    {
-                        Features = features
-                    };
-
-                    // Debugging: Print out the features before serialization
-                    Console.WriteLine($"Serialized example: {features.feature.Count} features");
-
-                    using (var memoryStream = new MemoryStream())
-                    {
-                        ProtoBuf.Serializer.Serialize(memoryStream, example);
-                        byte[] serializedExample = memoryStream.ToArray();
-
-                        // Write the serialized example to the TFRecord file
-                        writer.Write(serializedExample);
-                        Console.WriteLine($"Written {serializedExample.Length} bytes to TFRecord.");
-                    }
+                    Console.WriteLine($"Skipping missing file(s): {filename}");
+                    continue;
                 }
+
+                int label = GetLabelFromAnnotation(annotationPath, classMap);
+
+                using Bitmap bmp = new Bitmap(imagePath);
+                using Bitmap resized = new Bitmap(bmp, new Size(AIConfig.ImageSize, AIConfig.ImageSize));
+                byte[] imageBytes = ImageToByteArray(resized);
+
+                Feature imageFeature = TfFeatureHelper.Bytes(imageBytes);
+                Feature labelFeature = TfFeatureHelper.Int64(label);
+
+                Features features = new Features();
+                features.feature.Add("image", imageFeature);
+                features.feature.Add("label", labelFeature);
+
+                Example example = new Example
+                {
+                    Features = features
+                };
+
+                // Serialize Example to byte array
+                byte[] exampleBytes;
+                using (var ms = new MemoryStream())
+                {
+                    Serializer.Serialize(ms, example);
+                    exampleBytes = ms.ToArray();
+                }
+
+                // Write TFRecord formatted record
+                WriteTFRecord(writer, exampleBytes);
             }
 
-            Console.WriteLine($"{tfRecordFileName} created at " + tfRecordFilePath);
+            Console.WriteLine($"{tfRecordFileName} created at {tfRecordFilePath}");
         }
+
+        private static void WriteTFRecord(Stream stream, byte[] data)
+        {
+            // Length (ulong)
+            ulong length = (ulong)data.Length;
+            byte[] lengthBytes = BitConverter.GetBytes(length);
+            stream.Write(lengthBytes, 0, 8);
+
+            // Length CRC
+            uint lengthCrc = MaskedCrc32c(lengthBytes);
+            byte[] lengthCrcBytes = BitConverter.GetBytes(lengthCrc);
+            stream.Write(lengthCrcBytes, 0, 4);
+
+            // Data
+            stream.Write(data, 0, data.Length);
+
+            // Data CRC
+            uint dataCrc = MaskedCrc32c(data);
+            byte[] dataCrcBytes = BitConverter.GetBytes(dataCrc);
+            stream.Write(dataCrcBytes, 0, 4);
+        }
+
+        // Implementation of masked CRC32c for TFRecord
+        private static uint MaskedCrc32c(byte[] data)
+        {
+            uint crc = Crc32Algorithm.Compute(data);
+            return ((crc >> 15) | (crc << 17)) + 0xa282ead8;
+        }
+
 
         public static int GetLabelFromAnnotation(string annotationPath, Dictionary<int, string> classMap)
         {

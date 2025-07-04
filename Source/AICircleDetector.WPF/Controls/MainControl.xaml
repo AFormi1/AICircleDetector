@@ -24,72 +24,51 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="5"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="5"/>      
+            <RowDefinition Height="5"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="5"/>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0">
 
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="170"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="170"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="170"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="170"/>
-            </Grid.ColumnDefinitions>
-
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="5"/>
-                <RowDefinition Height="27"/>
-            </Grid.RowDefinitions>
+        <StackPanel  Grid.Row="0" Orientation="Horizontal">
 
             <Button Content="Create Training Data" 
-                    Grid.Column="0" Grid.Row="0"
-                    IsEnabled="{Binding DataButtonEnabled}"
-                    Command="{Binding CreateTrainingDataCommand}" />
-
-            <Label Content="Generating training data ..."
-                   Grid.Column="0" Grid.Row="2"       
-                   Foreground="DarkGreen"
-                   FontWeight="Bold"
-                   d:Visibility="Visible"
-                   Visibility="{Binding IsBusyDataCreation, Converter={StaticResource BoolToVisibilityConverter}}"
-                   VerticalAlignment="Center"/>
+                        Grid.Column="0" Grid.Row="0"
+                        IsEnabled="{Binding DataButtonEnabled}"
+                        Command="{Binding CreateTrainingDataCommand}" 
+                        Margin="5, 0"/>
 
             <Button Content="Train AI" 
-                    Grid.Column="2" Grid.Row="0"
-                    IsEnabled="{Binding TrainingButtonEnabled}"
-                    Command="{Binding TrainAICommand}"
-                    Width="80"
-                    HorizontalAlignment="Left"/>
-            
-            <Button Content="Cancel" 
-                    Grid.Column="2" Grid.Row="0"
-                    Command="{Binding CancelTrainAICommand}" 
-                    Width="80"
-                    HorizontalAlignment="Right"/>
+                        IsEnabled="{Binding TrainingButtonEnabled}"
+                        Command="{Binding TrainAICommand}"
+                        Width="80"
+                        HorizontalAlignment="Left"
+                        Margin="5, 0"/>
 
-            <Label Content="AI is training ..."
-                   Grid.Column="2" Grid.Row="2"       
-                   Foreground="DarkGreen"
-                   FontWeight="Bold"
-                   d:Visibility="Visible"
-                   Visibility="{Binding IsBusyTraining, Converter={StaticResource BoolToVisibilityConverter}}"
-                   VerticalAlignment="Center"/>
+            <Button Content="Validate AI" 
+                        IsEnabled="{Binding ValidateButtonEnabled}"
+                        Command="{Binding ValidateAICommand}"
+                        Width="80"
+                        HorizontalAlignment="Left"
+                        Margin="5, 0"/>
+
+            <Button Content="Cancel" 
+                        Command="{Binding CancelTrainAICommand}" 
+                        Width="80"
+                        HorizontalAlignment="Right"
+                        Margin="5, 0"/>
 
             <Button Content="Open Image" 
-                    Grid.Column="4" Grid.Row="0" 
-                    Command="{Binding OpenImageCommand}" />
-            
-            <Button Content="Detect Circles" 
-                    Grid.Column="6" Grid.Row="0"
-                    Command="{Binding DetectCircleCommand}" />
+                        Command="{Binding OpenImageCommand}" 
+                        Margin="5, 0"/>
 
-        </Grid>
+            <Button Content="Detect Circles" 
+                        Command="{Binding DetectCircleCommand}" 
+                        Margin="5, 0"/>
+
+        </StackPanel>
+
+
 
         <TextBox Text="{Binding ConsoleText}"  
                  Background="Transparent"
@@ -106,7 +85,7 @@
                  converter:TextBoxAutoScroller.AutoScroll="True"/>
 
         <Border BorderBrush="DarkGray" BorderThickness="2" Grid.Row="4" Padding="5" CornerRadius="10">
-            <Image Source="{Binding ImageToDisplay}"/>            
+            <Image Source="{Binding ImageToDisplay}"/>
         </Border>
 
     </Grid>

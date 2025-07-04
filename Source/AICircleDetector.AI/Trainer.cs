@@ -1,9 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using Google.Protobuf;
+﻿using static Tensorflow.Binding;
+using static Tensorflow.KerasApi;
+using Tensorflow;
+using Tensorflow.NumPy;
 using ProtoBuf;
-using AICircleDetector.AI;
+using System.Drawing;
+using System.Reflection.Metadata.Ecma335;
 
 namespace AICircleDetector.AI
 {
@@ -15,23 +16,24 @@ namespace AICircleDetector.AI
 
             try
             {
-                string trainTFRecordPath = Path.Combine(basepath, AIConfig.TrainListName);
-                string valTFRecordPath = Path.Combine(basepath, AIConfig.TrainValListName);
+                string trainTFRecordPath = Path.Combine(basepath, AIConfig.TrainDataName);
+                string valTFRecordPath = Path.Combine(basepath, AIConfig.ValDataName);
 
                 // Step 1: Load the TFRecord files
                 var trainData = LoadTFRecord(trainTFRecordPath);
-                var valData = LoadTFRecord(valTFRecordPath);
 
                 // Step 2: Train the model with the trainData
-                result = TrainModel(cancellationToken, trainData);
+                result = TrainModel(cancellationToken, trainData, basepath);
 
-                // Step 3: Optionally, validate the model using the valData
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    return result;
-                }
+                //Step 3 .... validation (later)
+                //var valData = LoadTFRecord(valTFRecordPath);
+                //// Step 3: Optionally, validate the model using the valData
+                //if (cancellationToken.IsCancellationRequested)
+                //{
+                //    return result;
+                //}
 
-                result = ValidateModel(cancellationToken, valData);
+                //result = ValidateModel(cancellationToken, valData);
 
             }
             catch (Exception ex)
@@ -48,36 +50,213 @@ namespace AICircleDetector.AI
         {
             List<Example> examples = new List<Example>();
 
-            // Open the TFRecord file as a binary stream
-            using (var reader = new FileStream(tfRecordPath, FileMode.Open, FileAccess.Read))
+            using (var file = File.OpenRead(tfRecordPath))
             {
-                while (reader.Position < reader.Length)
+                while (file.Position < file.Length)
                 {
-                    byte[] lengthBytes = new byte[4];
-                    reader.Read(lengthBytes, 0, 4);
-                    int length = BitConverter.ToInt32(lengthBytes, 0);
+                    // Read length (8 bytes unsigned long)
+                    byte[] lengthBytes = new byte[8];
+                    int readLen = file.Read(lengthBytes, 0, 8);
+                    if (readLen < 8)
+                        break; // EOF or corrupted
 
-                    byte[] serializedExample = new byte[length];
-                    reader.Read(serializedExample, 0, length);
+                    ulong recordLength = BitConverter.ToUInt64(lengthBytes, 0);
 
-                    Example example;
-                    using (var ms = new MemoryStream(serializedExample))
+                    // Optional: sanity check for recordLength
+                    if (recordLength > int.MaxValue)
+                        throw new Exception($"Record length too large: {recordLength}");
+
+                    // Skip length CRC (4 bytes)
+                    file.Seek(4, SeekOrigin.Current);
+
+                    // Read record data
+                    byte[] data = new byte[recordLength];
+                    int readData = file.Read(data, 0, (int)recordLength);
+                    if (readData < (int)recordLength)
+                        break; // EOF or corrupted
+
+                    // Skip data CRC (4 bytes)
+                    file.Seek(4, SeekOrigin.Current);
+
+                    using (var ms = new MemoryStream(data))
                     {
-                        example = ProtoBuf.Serializer.Deserialize<Example>(ms);
+                        var example = Serializer.Deserialize<Example>(ms);
+                        examples.Add(example);
                     }
                 }
             }
 
-
-
             return examples;
         }
 
-        private static AIResult TrainModel(CancellationToken cancellationToken, List<Example> trainData)
+
+
+
+        public static AIResult TrainModel(CancellationToken cancellationToken, List<Example> trainData, string basePath)
         {
-            // Train the model with trainData
+            NDArray xTrain, yTrain;
+
+            var result = Create_ND_array(trainData, out xTrain, out yTrain, cancellationToken);
+
+            if (!result.Success)
+                return result;
+
+            AIResult trainingResult = Train(xTrain, yTrain, basePath);
+
+            return trainingResult;
+        }
+
+        private static AIResult Create_ND_array(List<Example> trainData, out NDArray xTrain, out NDArray yTrain, CancellationToken cancellationToken)
+        {
+            int imageHeight = 28;
+            int imageWidth = 28;
+            int imageChannels = 1;
+            int imageSize = imageHeight * imageWidth;
+
+            var images = new List<float[]>();
+            var labels = new List<int>();
+
+            foreach (var example in trainData)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    xTrain = null;
+                    yTrain = null;
+                    return new AIResult { Success = false, Message = "Training cancelled." };
+                }
+
+                var featureMap = example.Features?.feature;
+                if (featureMap == null ||
+                    !featureMap.TryGetValue("image", out var imageFeature) ||
+                    !featureMap.TryGetValue("label", out var labelFeature))
+                    continue;
+
+                var imageBytes = imageFeature.BytesList?.Values?[0];
+                var label = labelFeature.Int64List?.Values?[0] ?? 0;
+
+                if (imageBytes == null || imageBytes.Length == 0)
+                    continue;
+
+                using var ms = new MemoryStream(imageBytes);
+                using var bmp = new Bitmap(ms);
+                using var resized = new Bitmap(bmp, new Size(imageWidth, imageHeight));
+
+                float[] imageFloats = new float[imageSize];
+                for (int y = 0; y < imageHeight; y++)
+                {
+                    for (int x = 0; x < imageWidth; x++)
+                    {
+                        Color pixel = resized.GetPixel(x, y);
+                        float gray = (pixel.R + pixel.G + pixel.B) / 3f / 255f;
+                        imageFloats[y * imageWidth + x] = gray;
+                    }
+                }
+
+                images.Add(imageFloats);
+                labels.Add((int)label);
+            }
+
+            if (images.Count == 0)
+            {
+                xTrain = null;
+                yTrain = null;
+                return new AIResult { Success = false, Message = "No valid training data found." };
+            }
+
+            int sampleCount = images.Count;
+            var reshapedImages = new float[sampleCount, imageHeight, imageWidth, imageChannels];
+
+            for (int i = 0; i < sampleCount; i++)
+            {
+                for (int row = 0; row < imageHeight; row++)
+                {
+                    for (int col = 0; col < imageWidth; col++)
+                    {
+                        reshapedImages[i, row, col, 0] = images[i][row * imageWidth + col];
+                    }
+                }
+            }
+
+            xTrain = np.array(reshapedImages);
+            yTrain = np.array(labels.ToArray());
+
             return new AIResult { Success = true };
         }
+
+
+
+        public static AIResult Train(NDArray xTrain, NDArray yTrain, string basepath)
+        {
+            // Reshape labels to 1D
+            yTrain = yTrain.reshape(new Shape(yTrain.shape[0]));
+
+            var layers = keras.layers;
+
+            var inputs = keras.Input(shape: (28, 28, 1), name: "input_layer");
+
+            // Build the model - simplified, inspired by your example but for 28x28 grayscale
+            var x = layers.Conv2D(32, kernel_size: 3, activation: "relu", padding: "same").Apply(inputs);
+            x = layers.MaxPooling2D(pool_size: 2).Apply(x);
+
+            x = layers.Conv2D(64, kernel_size: 3, activation: "relu", padding: "same").Apply(x);
+            x = layers.MaxPooling2D(pool_size: 2).Apply(x);
+
+            x = layers.Flatten().Apply(x);
+            x = layers.Dense(128, activation: "relu").Apply(x);
+            x = layers.Dropout(0.5f).Apply(x);
+
+            // Output layer: 10 classes as you had before
+            var outputs = layers.Dense(10).Apply(x);
+
+            var model = keras.Model(inputs, outputs, name: "CircleDetection");
+
+            model.summary();
+
+            // Compile model
+            //model.compile(optimizer: keras.optimizers.RMSprop(1e-3f),
+            //              loss: keras.losses.SparseCategoricalCrossentropy(),
+            //              metrics: new[] { "accuracy" });
+            model.compile(optimizer: keras.optimizers.Adam(),
+                          loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
+                          metrics: new[] { "accuracy" });
+
+            Console.WriteLine("Starting training...");
+
+            // Train the model using your data (make sure xTrain is normalized [0,1])
+            model.fit(xTrain, yTrain,
+                      batch_size: 64,
+                      epochs: 10,
+                      validation_split: 0.2f);
+
+            Console.WriteLine("Training complete.");
+
+            // Save the model
+            model.save(Path.Combine(basepath, "TrainingResult"));
+
+            var evalResult = model.evaluate(xTrain, yTrain, verbose: 0);
+
+            // Safely retrieve loss and accuracy by key
+            float loss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;
+            float accuracy = evalResult.ContainsKey("accuracy") ? evalResult["accuracy"] : float.NaN;
+
+            // Package into result object
+            var result = new AIResult
+            {
+                Success = true,
+                Message = "Training completed successfully.",
+                Loss = loss,
+                Accuracy = accuracy
+            };
+
+            return result;
+
+        }
+
+
+
+
+
+
 
         private static AIResult ValidateModel(CancellationToken cancellationToken, List<Example> valData)
         {
@@ -85,4 +264,5 @@ namespace AICircleDetector.AI
             return new AIResult { Success = true };
         }
     }
+
 }

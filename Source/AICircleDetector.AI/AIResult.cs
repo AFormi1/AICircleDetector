@@ -12,6 +12,5 @@ namespace AICircleDetector.AI
         public string Message { get; set; } = string.Empty;
         public float Loss { get; set; } = 0.0f;
         public float Accuracy{ get; set; } = 0.0f;
-        public float MAE{ get; set; } = 0.0f;
     }
 }

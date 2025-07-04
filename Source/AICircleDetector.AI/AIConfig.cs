@@ -20,6 +20,9 @@ namespace AICircleDetector.AI
         public static string TrainListName { get; private set; } = "train.txt";
         public static string ValListName { get; private set; } = "val.txt";
         public static string TrainValListName { get; private set; } = "trainval.txt";
+        public static string TrainDataName { get; private set; } = "train_data.tfrecord";
+        public static string ValDataName { get; private set; } = "val_data.tfrecord";
+
 
 
         public static string TensorFlowModel { get; private set; } = "circle_count_model";

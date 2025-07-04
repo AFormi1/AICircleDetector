@@ -64,6 +64,10 @@ namespace AICircleDetector.WPF.ViewModels
             DataButtonEnabled = false;
             IsBusyDataCreation = true;
 
+            // SETUP: Redirect console output to ConsoleText
+            if (true)
+                Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+
             for (int i = 0; i < TrainingSetsCount; i++)
             {
                 await Task.Run(() => AI.TrainingDataBuilder.CreateTrainingData(imageCount: 400));
@@ -104,7 +108,7 @@ namespace AICircleDetector.WPF.ViewModels
                     string folderName = folderDialog.FolderName;
 
                     // SETUP: Redirect console output to ConsoleText
-                    if (false)
+                    if (true)
                         Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
                   
                     results.Add(await Task.Run(() => AI.Trainer.Train(CancelToken, folderName)));
@@ -170,7 +174,7 @@ namespace AICircleDetector.WPF.ViewModels
                 //    string folderName = folderDialog.FolderName;
 
                 //    // SETUP: Redirect console output to ConsoleText
-                //    if (false)
+                //    if (true)
                 //        Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
                   
                 //    results.Add(await Task.Run(() => AI.Trainer.Train(CancelToken, folderName)));

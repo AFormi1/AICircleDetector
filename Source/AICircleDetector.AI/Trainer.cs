@@ -212,10 +212,6 @@ namespace AICircleDetector.AI
 
             model.summary();
 
-            // Compile model
-            //model.compile(optimizer: keras.optimizers.RMSprop(1e-3f),
-            //              loss: keras.losses.SparseCategoricalCrossentropy(),
-            //              metrics: new[] { "accuracy" });
             model.compile(optimizer: keras.optimizers.Adam(),
                           loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
                           metrics: new[] { "accuracy" });

@@ -35,23 +35,32 @@ namespace AICircleDetector.AI
 
                 model.summary();
 
-                model.compile(optimizer: keras.optimizers.Adam(),
-                              loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
-                              metrics: new[] { "accuracy" });
+                //model.compile(optimizer: keras.optimizers.Adam(),
+                //              loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
+                //              metrics: new[] { "accuracy" });
 
+
+                model.compile(
+                    optimizer: keras.optimizers.Adam(),
+                    loss: keras.losses.MeanSquaredError(), // or MeanAbsoluteError
+                    metrics: new[] { "mean_absolute_error" }); // or "mse"
+     
 
                 Console.WriteLine("Predictor: running prediction...");
                 var output = model.predict(inputTensor);
 
-                NDArray numpyArray = output.numpy();
-                Console.WriteLine($"Raw output: {numpyArray}, shape: {numpyArray.shape}");
+                //NDArray numpyArray = output.numpy();
+                //Console.WriteLine($"Raw output: {numpyArray}, shape: {numpyArray.shape}");
 
                 // Get the predicted number of circles (raw float value)
-                float predictedCircles = numpyArray[0, 0] * AIConfig.MaxCircles;
+                //int predictedCircles = np.argmax(numpyArray);
+
+                float predictedCircles = output.numpy()[0, 0];     
 
                 result.Success = true;
-                result.Message = $"Predicted Number of Circles: {predictedCircles:F4}";
+                result.Message = $"Predicted Number of Circles: {predictedCircles}";
                 Console.WriteLine(result.Message);
+
             }
             catch (Exception ex)
             {

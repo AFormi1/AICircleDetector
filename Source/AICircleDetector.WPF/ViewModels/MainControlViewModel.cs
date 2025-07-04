@@ -108,11 +108,11 @@ namespace AICircleDetector.WPF.ViewModels
                     results.Add(await Task.Run(() => AI.TrainerAndValidator.Train(CancelToken, folderName)));
 
                     // Calculate the average loss and accuracy from the results
-                    float averageLoss = results.Average(result => result.Loss);
-                    float averageAccuracy = results.Average(result => result.Accuracy);
+                    float res1 = results.Average(result => result.Loss);
+                    float res2 = results.Average(result => result.MAE);
 
                     // Prepare the result message
-                    string message = $"Training complete!\nAverage Loss: {averageLoss:F4}\nAverage Accuracy: {averageAccuracy:F4}";
+                    string message = $"Training complete!\nAverage Loss: {res1:F4}\nAverage MAE: {res2:F4}";
 
                     // Determine whether the overall result is a success or error
                     bool allSuccessful = results.All(result => result.Success);
@@ -170,11 +170,11 @@ namespace AICircleDetector.WPF.ViewModels
                     results.Add(await Task.Run(() => AI.TrainerAndValidator.Validate(CancelToken, folderName)));
 
                     // Calculate the average loss and accuracy from the results
-                    float averageLoss = results.Average(result => result.Loss);
-                    float averageAccuracy = results.Average(result => result.Accuracy);
+                    float res1 = results.Average(result => result.Loss);
+                    float res2 = results.Average(result => result.MAE);
 
                     // Prepare the result message
-                    string message = $"Validation complete!\nAverage Loss: {averageLoss:F4}\nAverage Accuracy: {averageAccuracy:F4}";
+                    string message = $"Validation complete!\nAverage Loss: {res1:F4}\nAverage MAE: {res2:F4}";
 
                     // Determine whether the overall result is a success or error
                     bool allSuccessful = results.All(result => result.Success);

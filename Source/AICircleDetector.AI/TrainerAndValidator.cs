@@ -5,6 +5,7 @@ using Tensorflow.NumPy;
 using ProtoBuf;
 using System.Drawing;
 using System.Reflection.Metadata.Ecma335;
+using OneOf.Types;
 
 namespace AICircleDetector.AI
 {
@@ -52,9 +53,14 @@ namespace AICircleDetector.AI
 
                 model.summary();
 
-                model.compile(optimizer: keras.optimizers.Adam(),
-                              loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
-                              metrics: new[] { "accuracy" });
+                //model.compile(optimizer: keras.optimizers.Adam(),
+                //              loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
+                //              metrics: new[] { "accuracy" });
+
+                model.compile(
+                    optimizer: keras.optimizers.Adam(),
+                    loss: keras.losses.MeanSquaredError(), // or MeanAbsoluteError
+                    metrics: new[] { "mean_absolute_error" }); // or "mse"
 
                 //Step 1: Load the TFRecord files
                 string valTFRecordPath = Path.Combine(basepath, AIConfig.ValDataName);
@@ -82,14 +88,14 @@ namespace AICircleDetector.AI
                 var evalResult = model.evaluate(xVal, yVal, verbose: 1);
 
                 float valLoss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;
-                float valAccuracy = evalResult.ContainsKey("accuracy") ? evalResult["accuracy"] : float.NaN;                
+                float valMAE = evalResult.ContainsKey("mean_absolute_error") ? evalResult["mean_absolute_error"] : float.NaN;                
 
                 return new AIResult
                 {
                     Success = true,
                     Message = "Validation completed successfully.",
                     Loss = valLoss,
-                    Accuracy = valAccuracy
+                    MAE = valMAE
                 };
 
             }
@@ -248,7 +254,7 @@ namespace AICircleDetector.AI
 
             var inputs = keras.Input(shape: (AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize, 1), name: "input_layer");
 
-            // Build the model - simplified, inspired by your example but for 28x28 grayscale
+            // Build the model
             var x = layers.Conv2D(32, kernel_size: 3, activation: "relu", padding: "same").Apply(inputs);
             x = layers.MaxPooling2D(pool_size: 2).Apply(x);
 
@@ -260,23 +266,28 @@ namespace AICircleDetector.AI
             x = layers.Dropout(0.5f).Apply(x);
 
             // Output layer: 10 classes as you had before
-            var outputs = layers.Dense(10).Apply(x);
+            var outputs = layers.Dense(1).Apply(x);
 
             var model = keras.Model(inputs, outputs, name: "CircleDetection");
 
             model.summary();
 
-            model.compile(optimizer: keras.optimizers.Adam(),
-                          loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
-                          metrics: new[] { "accuracy" });
+            //model.compile(optimizer: keras.optimizers.Adam(),
+            //              loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
+            //              metrics: new[] { "accuracy" });
+
+            model.compile(
+    optimizer: keras.optimizers.Adam(),
+    loss: keras.losses.MeanSquaredError(), // or MeanAbsoluteError
+    metrics: new[] { "mean_absolute_error" } // or "mse"
+);
 
             Console.WriteLine("Starting training...");
 
             // Train the model using your data (make sure xTrain is normalized [0,1])
             model.fit(xTrain, yTrain,
                       batch_size: 64,
-                      epochs: 10,
-                      validation_split: 0.2f);
+                      epochs: 10);
 
             Console.WriteLine("Training complete.");
 
@@ -288,16 +299,15 @@ namespace AICircleDetector.AI
             var evalResult = model.evaluate(xTrain, yTrain, verbose: 0);
 
             // Safely retrieve loss and accuracy by key
-            float loss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;
-            float accuracy = evalResult.ContainsKey("accuracy") ? evalResult["accuracy"] : float.NaN;
+            float valLoss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;
+            float valMAE = evalResult.ContainsKey("mean_absolute_error") ? evalResult["mean_absolute_error"] : float.NaN;
 
-            // Package into result object
             var result = new AIResult
             {
                 Success = true,
                 Message = "Training completed successfully.",
-                Loss = loss,
-                Accuracy = accuracy
+                Loss = valLoss,
+                MAE = valMAE
             };
 
             return result;

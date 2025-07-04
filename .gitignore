@@ -1,5 +1,8 @@
 # Project specific ignores
 
+# ignore tensorflow.net from git
+
+*TensorFlow.NET-master
 
 # Ignore log files for 
 log.txt

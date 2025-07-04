@@ -8,32 +8,89 @@ using System.Reflection.Metadata.Ecma335;
 
 namespace AICircleDetector.AI
 {
-    public static class Trainer
+    public static class TrainerAndValidator
     {
-        public static async Task<AIResult> Train(CancellationToken cancellationToken, string basepath)
+        public static AIResult Train(CancellationToken cancellationToken, string basepath)
         {
             AIResult result = new();
 
             try
             {
                 string trainTFRecordPath = Path.Combine(basepath, AIConfig.TrainDataName);
-                string valTFRecordPath = Path.Combine(basepath, AIConfig.ValDataName);
 
                 // Step 1: Load the TFRecord files
                 var trainData = LoadTFRecord(trainTFRecordPath);
 
                 // Step 2: Train the model with the trainData
                 result = TrainModel(cancellationToken, trainData, basepath);
+   
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return result;
+                }
 
-                //Step 3 .... validation (later)
-                //var valData = LoadTFRecord(valTFRecordPath);
-                //// Step 3: Optionally, validate the model using the valData
-                //if (cancellationToken.IsCancellationRequested)
-                //{
-                //    return result;
-                //}
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+                result.Success = false;
+                result.Message = ex.Message;
+            }
 
-                //result = ValidateModel(cancellationToken, valData);
+            return result;
+        }
+
+        public static AIResult Validate(CancellationToken cancellationToken, string basepath)
+        {
+            AIResult result = new();
+
+            try
+            {
+                //Step 1: load the model if exists
+                var modelPath = Path.Combine(basepath, AIConfig.TrainingModel);
+                var model = keras.models.load_model(modelPath);
+
+                model.summary();
+
+                model.compile(optimizer: keras.optimizers.Adam(),
+                              loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
+                              metrics: new[] { "accuracy" });
+
+                //Step 1: Load the TFRecord files
+                string valTFRecordPath = Path.Combine(basepath, AIConfig.ValDataName);
+
+                if (cancellationToken.IsCancellationRequested)
+                    return result;
+
+                var valData = LoadTFRecord(valTFRecordPath);
+
+                //Step 2: Create the ND array 
+                if (cancellationToken.IsCancellationRequested)
+                    return result;
+
+                var validationResult = Create_ND_array(valData, out NDArray xVal, out NDArray yVal, cancellationToken);
+
+                if (!validationResult.Success)
+                    return validationResult;
+
+                // Step 3: validate the model with the validationData
+                if (cancellationToken.IsCancellationRequested)
+                    return result;
+
+                yVal = yVal.reshape(new Shape(yVal.shape[0])); // ensure 1D labels
+
+                var evalResult = model.evaluate(xVal, yVal, verbose: 1);
+
+                float valLoss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;
+                float valAccuracy = evalResult.ContainsKey("accuracy") ? evalResult["accuracy"] : float.NaN;                
+
+                return new AIResult
+                {
+                    Success = true,
+                    Message = "Validation completed successfully.",
+                    Loss = valLoss,
+                    Accuracy = valAccuracy
+                };
 
             }
             catch (Exception ex)
@@ -184,7 +241,6 @@ namespace AICircleDetector.AI
         }
 
 
-
         public static AIResult Train(NDArray xTrain, NDArray yTrain, string basepath)
         {
             // Reshape labels to 1D
@@ -227,7 +283,7 @@ namespace AICircleDetector.AI
             Console.WriteLine("Training complete.");
 
             // Save the model
-            model.save(Path.Combine(basepath, "TrainingResult"));
+            model.save(Path.Combine(basepath, AIConfig.TrainingModel));
 
             var evalResult = model.evaluate(xTrain, yTrain, verbose: 0);
 
@@ -245,20 +301,9 @@ namespace AICircleDetector.AI
             };
 
             return result;
-
         }
 
 
-
-
-
-
-
-        private static AIResult ValidateModel(CancellationToken cancellationToken, List<Example> valData)
-        {
-            // Validate the model with valData
-            return new AIResult { Success = true };
-        }
     }
 
 }

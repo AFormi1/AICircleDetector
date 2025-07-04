@@ -14,6 +14,7 @@ namespace AICircleDetector.AI
         //https://github.com/SciSharp/TensorFlow.NET/wiki/Using-GPU-with-Tensorflow.NET
 
         public static string TrainingFolderName { get; private set; } = "TrainingData";
+        public static string TrainingModel { get; private set; } = "TrainingModel";
         public static string ImageFolderName { get; private set; } = "images";
         public static string AnnotationsFolderName { get; private set; } = "annotations";
         public static string LabelMapName { get; private set; } = "label_map.pbtxt";

@@ -99,7 +99,7 @@ namespace AICircleDetector.WPF.ViewModels
             {
                 OpenFolderDialog folderDialog = new OpenFolderDialog
                 {
-                    Title = "Select Folder with training folders",
+                    Title = "Select Folder",
                     InitialDirectory = AppDomain.CurrentDomain.BaseDirectory
                 };
 
@@ -111,7 +111,7 @@ namespace AICircleDetector.WPF.ViewModels
                     if (true)
                         Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
                   
-                    results.Add(await Task.Run(() => AI.Trainer.Train(CancelToken, folderName)));
+                    results.Add(await Task.Run(() => AI.TrainerAndValidator.Train(CancelToken, folderName)));
 
                     // Calculate the average loss and accuracy from the results
                     float averageLoss = results.Average(result => result.Loss);
@@ -161,43 +161,41 @@ namespace AICircleDetector.WPF.ViewModels
 
             try
             {
-                //todo
+                OpenFolderDialog folderDialog = new OpenFolderDialog
+                {
+                    Title = "Select Folder",
+                    InitialDirectory = AppDomain.CurrentDomain.BaseDirectory
+                };
 
-                //OpenFolderDialog folderDialog = new OpenFolderDialog
-                //{
-                //    Title = "Select Folder with training folders",
-                //    InitialDirectory = AppDomain.CurrentDomain.BaseDirectory
-                //};
+                if (folderDialog.ShowDialog() == true)
+                {
+                    string folderName = folderDialog.FolderName;
 
-                //if (folderDialog.ShowDialog() == true)
-                //{
-                //    string folderName = folderDialog.FolderName;
+                    // SETUP: Redirect console output to ConsoleText
+                    if (true)
+                        Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
 
-                //    // SETUP: Redirect console output to ConsoleText
-                //    if (true)
-                //        Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
-                  
-                //    results.Add(await Task.Run(() => AI.Trainer.Train(CancelToken, folderName)));
+                    results.Add(await Task.Run(() => AI.TrainerAndValidator.Validate(CancelToken, folderName)));
 
-                //    // Calculate the average loss and accuracy from the results
-                //    float averageLoss = results.Average(result => result.Loss);
-                //    float averageAccuracy = results.Average(result => result.Accuracy);
+                    // Calculate the average loss and accuracy from the results
+                    float averageLoss = results.Average(result => result.Loss);
+                    float averageAccuracy = results.Average(result => result.Accuracy);
 
-                //    // Prepare the result message
-                //    string message = $"Training complete!\nAverage Loss: {averageLoss:F4}\nAverage Accuracy: {averageAccuracy:F4}";
+                    // Prepare the result message
+                    string message = $"Validation complete!\nAverage Loss: {averageLoss:F4}\nAverage Accuracy: {averageAccuracy:F4}";
 
-                //    // Determine whether the overall result is a success or error
-                //    bool allSuccessful = results.All(result => result.Success);
-                //    string title = allSuccessful ? "Success" : "Error";
-                //    MessageBoxImage icon = allSuccessful ? MessageBoxImage.Information : MessageBoxImage.Error;
+                    // Determine whether the overall result is a success or error
+                    bool allSuccessful = results.All(result => result.Success);
+                    string title = allSuccessful ? "Success" : "Error";
+                    MessageBoxImage icon = allSuccessful ? MessageBoxImage.Information : MessageBoxImage.Error;
 
-                //    // Show success/error popup with averages
-                //    MessageBox.Show(message, title, MessageBoxButton.OK, icon);
-                //}
-                //else
-                //{
-                //    throw new OperationCanceledException("Folder selection was cancelled.");
-                //}
+                    // Show success/error popup with averages
+                    MessageBox.Show(message, title, MessageBoxButton.OK, icon);
+                }
+                else
+                {
+                    throw new OperationCanceledException("Folder selection was cancelled.");
+                }
             }
             catch (Exception ex)
             {

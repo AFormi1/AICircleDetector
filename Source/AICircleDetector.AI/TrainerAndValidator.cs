@@ -24,7 +24,7 @@ namespace AICircleDetector.AI
 
                 // Step 2: Train the model with the trainData
                 result = TrainModel(cancellationToken, trainData, basepath);
-   
+
                 if (cancellationToken.IsCancellationRequested)
                 {
                     return result;
@@ -48,7 +48,16 @@ namespace AICircleDetector.AI
             try
             {
                 //Step 1: load the model if exists
-                var modelPath = Path.Combine(basepath, AIConfig.TrainingModel);
+                if (!Path.Exists(AIConfig.TrainingModelFullURL))
+                {
+                    return new AIResult
+                    {
+                        Success = false,
+                        Message = "Validation canceld, no pre-trained model found!"
+                    };
+                }
+
+                var modelPath = AIConfig.TrainingModelFullURL;
                 var model = keras.models.load_model(modelPath);
 
                 model.summary();
@@ -88,7 +97,7 @@ namespace AICircleDetector.AI
                 var evalResult = model.evaluate(xVal, yVal, verbose: 1);
 
                 float valLoss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;
-                float valMAE = evalResult.ContainsKey("mean_absolute_error") ? evalResult["mean_absolute_error"] : float.NaN;                
+                float valMAE = evalResult.ContainsKey("mean_absolute_error") ? evalResult["mean_absolute_error"] : float.NaN;
 
                 return new AIResult
                 {
@@ -277,24 +286,24 @@ namespace AICircleDetector.AI
             //              metrics: new[] { "accuracy" });
 
             model.compile(
-    optimizer: keras.optimizers.Adam(),
-    loss: keras.losses.MeanSquaredError(), // or MeanAbsoluteError
-    metrics: new[] { "mean_absolute_error" } // or "mse"
-);
+                    optimizer: keras.optimizers.Adam(),
+                    loss: keras.losses.MeanSquaredError(), // or MeanAbsoluteError
+                    metrics: new[] { "mean_absolute_error" } // or "mse"
+                );
 
             Console.WriteLine("Starting training...");
 
             // Train the model using your data (make sure xTrain is normalized [0,1])
             model.fit(xTrain, yTrain,
                       batch_size: 64,
-                      epochs: 10);
+                      epochs: 100);
 
             Console.WriteLine("Training complete.");
 
             // Save the model
-            AIConfig.TrainingModelFullURL = Path.Combine(basepath, AIConfig.TrainingModel);
-            model.save(AIConfig.TrainingModelFullURL);
+            AIConfig.TrainingModelFullURL = AIConfig.TrainingModelFullURL;
 
+            model.save(AIConfig.TrainingModelFullURL);
 
             var evalResult = model.evaluate(xTrain, yTrain, verbose: 0);
 

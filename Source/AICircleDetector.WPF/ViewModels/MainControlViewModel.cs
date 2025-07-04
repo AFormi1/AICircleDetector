@@ -102,7 +102,7 @@ namespace AICircleDetector.WPF.ViewModels
                 if (folderDialog.ShowDialog() == true)
                 {
                     Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
-
+                       
                     string folderName = folderDialog.FolderName;
                                   
                     results.Add(await Task.Run(() => AI.TrainerAndValidator.Train(CancelToken, folderName)));

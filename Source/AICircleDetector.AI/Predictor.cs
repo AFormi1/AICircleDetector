@@ -14,15 +14,18 @@ namespace AICircleDetector.AI
 
             try
             {
-                if (string.IsNullOrEmpty(AIConfig.TrainingModelFullURL))
+                if (!Path.Exists(AIConfig.TrainingModelFullURL))
                 {
                     string msg = "Predictor: Did not set the path to the Trained Model - please run Training and Validate Before!";
-                    result.Success = false;
-                    result.Message = $"{msg}";
                     Console.WriteLine(msg);
 
-                    return result;
+                    return new AIResult
+                    {
+                        Success = false,
+                        Message = msg
+                    };
                 }
+             
 
                 Console.WriteLine("Predictor: loading image...");
                 NDArray inputTensor = LoadImage(imagePath, AIConfig.TrainerShapeSize);

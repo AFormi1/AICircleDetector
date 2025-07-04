@@ -282,7 +282,15 @@ namespace AICircleDetector.AI
 
 
             // 1. Build and compile your model
-            var model = keras.Model(inputs, outputs, name: "CircleDetection");
+            IModel model;
+            if (Path.Exists(AIConfig.TrainingModelFullURL))
+            {
+                model = keras.models.load_model(AIConfig.TrainingModelFullURL);
+            }
+            else
+            {
+                model = keras.Model(inputs, outputs, name: "CircleDetection");
+            }
             model.summary();
 
             model.compile(
@@ -291,7 +299,7 @@ namespace AICircleDetector.AI
                 metrics: new[] { "mean_absolute_error" }
             );
 
-            int batch = 128;                    
+            int batch = 128;
             int epochs = 200;
 
             // 4. Train

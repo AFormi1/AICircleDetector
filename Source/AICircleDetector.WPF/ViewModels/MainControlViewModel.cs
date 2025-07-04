@@ -26,6 +26,9 @@ namespace AICircleDetector.WPF.ViewModels
         private string imageURL = string.Empty;
 
         [ObservableProperty]
+        private string imageCount = "200";
+
+        [ObservableProperty]
         private bool consoleEnabled = true;
 
         [ObservableProperty]
@@ -72,7 +75,14 @@ namespace AICircleDetector.WPF.ViewModels
 
             for (int i = 0; i < TrainingSetsCount; i++)
             {
-                await Task.Run(async () => await AI.TrainingDataBuilder.CreateTrainingData(imageCount: 1000));
+                _ = int.TryParse(ImageCount, out int imageCount);
+
+                if (imageCount == 0)
+                {
+                    imageCount = 200;
+                    ImageCount = "200";
+                }
+                await Task.Run(async () => await AI.TrainingDataBuilder.CreateTrainingData(imageCount: imageCount));
             }
 
 

@@ -42,6 +42,10 @@
                         IsEnabled="{Binding DataButtonEnabled}"
                         Command="{Binding CreateTrainingDataCommand}" 
                         Margin="5, 0"/>
+            <TextBox Text="{Binding ImageCount, FallbackValue=200}"
+                     Margin="5,0"
+                     VerticalAlignment="Center"
+                     Width="200"/>
 
             <Button Content="Train AI" 
                         IsEnabled="{Binding TrainingButtonEnabled}"

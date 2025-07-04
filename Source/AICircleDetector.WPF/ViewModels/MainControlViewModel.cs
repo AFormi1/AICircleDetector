@@ -46,7 +46,7 @@ namespace AICircleDetector.WPF.ViewModels
         public MainControlViewModel()
         {
             ConsoleBindingWriter writer = new ConsoleBindingWriter(AppendConsoleLine);
-            Console.SetOut(writer);
+            Console.SetOut(writer);       
         }
 
         private void AppendConsoleLine(string line)
@@ -63,11 +63,7 @@ namespace AICircleDetector.WPF.ViewModels
         {
             DataButtonEnabled = false;
             IsBusyDataCreation = true;
-
-            // SETUP: Redirect console output to ConsoleText
-            if (true)
-                Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
-
+                     
             for (int i = 0; i < TrainingSetsCount; i++)
             {
                 await Task.Run(() => AI.TrainingDataBuilder.CreateTrainingData(imageCount: 400));
@@ -105,12 +101,10 @@ namespace AICircleDetector.WPF.ViewModels
 
                 if (folderDialog.ShowDialog() == true)
                 {
-                    string folderName = folderDialog.FolderName;
+                    Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
 
-                    // SETUP: Redirect console output to ConsoleText
-                    if (true)
-                        Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
-                  
+                    string folderName = folderDialog.FolderName;
+                                  
                     results.Add(await Task.Run(() => AI.TrainerAndValidator.Train(CancelToken, folderName)));
 
                     // Calculate the average loss and accuracy from the results
@@ -169,11 +163,9 @@ namespace AICircleDetector.WPF.ViewModels
 
                 if (folderDialog.ShowDialog() == true)
                 {
-                    string folderName = folderDialog.FolderName;
+                    Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
 
-                    // SETUP: Redirect console output to ConsoleText
-                    if (true)
-                        Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+                    string folderName = folderDialog.FolderName;       
 
                     results.Add(await Task.Run(() => AI.TrainerAndValidator.Validate(CancelToken, folderName)));
 
@@ -242,7 +234,6 @@ namespace AICircleDetector.WPF.ViewModels
 
             try
             {
-                // SETUP: Redirect console output to ConsoleText
                 Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
 
                 // RUN: Training on background thread

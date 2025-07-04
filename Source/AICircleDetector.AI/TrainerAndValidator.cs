@@ -158,17 +158,15 @@ namespace AICircleDetector.AI
             if (!result.Success)
                 return result;
 
-            AIResult trainingResult = Train(xTrain, yTrain, basePath);
+            AIResult trainingResult = SetupAndTrainModel(xTrain, yTrain, basePath);
 
             return trainingResult;
         }
 
         private static AIResult Create_ND_array(List<Example> trainData, out NDArray xTrain, out NDArray yTrain, CancellationToken cancellationToken)
         {
-            int imageHeight = 28;
-            int imageWidth = 28;
             int imageChannels = 1;
-            int imageSize = imageHeight * imageWidth;
+            int imageSize = AIConfig.TrainerShapeSize * AIConfig.TrainerShapeSize;
 
             var images = new List<float[]>();
             var labels = new List<int>();
@@ -196,16 +194,16 @@ namespace AICircleDetector.AI
 
                 using var ms = new MemoryStream(imageBytes);
                 using var bmp = new Bitmap(ms);
-                using var resized = new Bitmap(bmp, new Size(imageWidth, imageHeight));
+                using var resized = new Bitmap(bmp, new Size(AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize));
 
                 float[] imageFloats = new float[imageSize];
-                for (int y = 0; y < imageHeight; y++)
+                for (int y = 0; y < AIConfig.TrainerShapeSize; y++)
                 {
-                    for (int x = 0; x < imageWidth; x++)
+                    for (int x = 0; x < AIConfig.TrainerShapeSize; x++)
                     {
                         Color pixel = resized.GetPixel(x, y);
                         float gray = (pixel.R + pixel.G + pixel.B) / 3f / 255f;
-                        imageFloats[y * imageWidth + x] = gray;
+                        imageFloats[y * AIConfig.TrainerShapeSize + x] = gray;
                     }
                 }
 
@@ -221,15 +219,15 @@ namespace AICircleDetector.AI
             }
 
             int sampleCount = images.Count;
-            var reshapedImages = new float[sampleCount, imageHeight, imageWidth, imageChannels];
+            var reshapedImages = new float[sampleCount, AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize, imageChannels];
 
             for (int i = 0; i < sampleCount; i++)
             {
-                for (int row = 0; row < imageHeight; row++)
+                for (int row = 0; row < AIConfig.TrainerShapeSize; row++)
                 {
-                    for (int col = 0; col < imageWidth; col++)
+                    for (int col = 0; col < AIConfig.TrainerShapeSize; col++)
                     {
-                        reshapedImages[i, row, col, 0] = images[i][row * imageWidth + col];
+                        reshapedImages[i, row, col, 0] = images[i][row * AIConfig.TrainerShapeSize + col];
                     }
                 }
             }
@@ -241,14 +239,14 @@ namespace AICircleDetector.AI
         }
 
 
-        public static AIResult Train(NDArray xTrain, NDArray yTrain, string basepath)
+        public static AIResult SetupAndTrainModel(NDArray xTrain, NDArray yTrain, string basepath)
         {
             // Reshape labels to 1D
             yTrain = yTrain.reshape(new Shape(yTrain.shape[0]));
 
             var layers = keras.layers;
 
-            var inputs = keras.Input(shape: (28, 28, 1), name: "input_layer");
+            var inputs = keras.Input(shape: (AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize, 1), name: "input_layer");
 
             // Build the model - simplified, inspired by your example but for 28x28 grayscale
             var x = layers.Conv2D(32, kernel_size: 3, activation: "relu", padding: "same").Apply(inputs);
@@ -283,7 +281,9 @@ namespace AICircleDetector.AI
             Console.WriteLine("Training complete.");
 
             // Save the model
-            model.save(Path.Combine(basepath, AIConfig.TrainingModel));
+            AIConfig.TrainingModelFullURL = Path.Combine(basepath, AIConfig.TrainingModel);
+            model.save(AIConfig.TrainingModelFullURL);
+
 
             var evalResult = model.evaluate(xTrain, yTrain, verbose: 0);
 

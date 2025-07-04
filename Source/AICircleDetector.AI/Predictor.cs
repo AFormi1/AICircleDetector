@@ -14,14 +14,31 @@ namespace AICircleDetector.AI
 
             try
             {
+                if (string.IsNullOrEmpty(AIConfig.TrainingModelFullURL))
+                {
+                    string msg = "Predictor: Did not set the path to the Trained Model - please run Training and Validate Before!";
+                    result.Success = false;
+                    result.Message = $"{msg}";
+                    Console.WriteLine(msg);
+
+                    return result;
+                }
+
                 Console.WriteLine("Predictor: loading image...");
-                NDArray inputTensor = LoadImage(imagePath, AIConfig.ImageSize);
+                NDArray inputTensor = LoadImage(imagePath, AIConfig.TrainerShapeSize);
 
                 Console.WriteLine($"Input shape: {inputTensor.shape}, dtype: {inputTensor.dtype}");
 
                 Console.WriteLine("Predictor: loading model...");
-                var keras = Tensorflow.KerasApi.keras;
-                var model = keras.models.load_model(AIConfig.TensorFlowModel);
+                             
+                var model = keras.models.load_model(AIConfig.TrainingModelFullURL);
+
+                model.summary();
+
+                model.compile(optimizer: keras.optimizers.Adam(),
+                              loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
+                              metrics: new[] { "accuracy" });
+
 
                 Console.WriteLine("Predictor: running prediction...");
                 var output = model.predict(inputTensor);
@@ -46,27 +63,27 @@ namespace AICircleDetector.AI
             return result;
         }
 
-        private static NDArray LoadImage(string path, int size)
+        private static NDArray LoadImage(string path, int size = 28)
         {
-            using Bitmap bmp = new Bitmap(path);
-            using Bitmap resized = new Bitmap(bmp, new Size(size, size));
+            using var bmp = new Bitmap(path);
+            using var resized = new Bitmap(bmp, new Size(size, size));
 
             float[,,] data = new float[size, size, 1];
+
             for (int y = 0; y < size; y++)
+            {
                 for (int x = 0; x < size; x++)
                 {
                     Color pixel = resized.GetPixel(x, y);
-                    float gray = (pixel.R + pixel.G + pixel.B) / 3f; // Grayscale conversion
+                    float gray = (pixel.R + pixel.G + pixel.B) / 3f / 255f; // normalize here
                     data[y, x, 0] = gray;
                 }
+            }
 
-            NDArray array = np.array(data, dtype: np.float32);
-
-            // Normalize the image to [0, 1]
-            array = array / 255.0f;
-
-            return np.expand_dims(array, 0); // Shape: [1, H, W, 1]
+            NDArray array = np.array(data, dtype: np.float32);       // shape: [28, 28, 1]
+            return np.expand_dims(array, 0);                          // shape: [1, 28, 28, 1]
         }
+
 
     }
 }

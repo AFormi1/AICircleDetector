@@ -24,11 +24,11 @@ namespace AICircleDetector.AI
         public static string TrainDataName { get; private set; } = "train_data.tfrecord";
         public static string ValDataName { get; private set; } = "val_data.tfrecord";
 
+        public static string TrainingModelFullURL { get; set; } = string.Empty;
 
-
-        public static string TensorFlowModel { get; private set; } = "circle_count_model";
         public static int MaxCircles { get; private set; } = 10;
         public static int MinCircles { get; private set; } = 0;
         public static int ImageSize { get; private set; } = 128;
+        public static int TrainerShapeSize { get; private set; } = 28;
     }
 }

@@ -1,10 +1,10 @@
-﻿using System;
+﻿using Google.Protobuf;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Tensorflow;
-using static Google.Protobuf.Compiler.CodeGeneratorResponse.Types;
 
 
 namespace AICircleDetector.AI
@@ -14,7 +14,16 @@ namespace AICircleDetector.AI
     {
         // For Bytes, we're dealing with byte arrays
         public static Feature Bytes(byte[] value) =>
-            new Feature { BytesList = new BytesList { Values = { Google.Protobuf.ByteString.CopyFrom(value).ToByteArray() } } };
+            new Feature
+            {
+                BytesList = new BytesList
+                {
+                    Values = { value }  // Directly add byte[]
+                }
+            };
+
+
+
 
         // For Int64, we convert a single long value to an array with one item
         public static Feature Int64(long value) =>
@@ -36,11 +45,11 @@ namespace AICircleDetector.AI
             var bytesList = new BytesList();
             foreach (var v in values)
             {
-                // Convert ByteString to byte[] using ToByteArray()
-                bytesList.Values.Add(Google.Protobuf.ByteString.CopyFromUtf8(v).ToByteArray());
+                bytesList.Values.Add(Encoding.UTF8.GetBytes(v));  // directly add byte[]
             }
             feature.BytesList = bytesList;
             return feature;
         }
+
     }
 }

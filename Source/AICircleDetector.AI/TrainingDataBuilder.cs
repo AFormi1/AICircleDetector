@@ -1,11 +1,13 @@
 ﻿using AICircleDetector.AI;
 using Force.Crc32;
+using Google.Protobuf;
 using OneOf.Types;
 using ProtoBuf;
 using SkiaSharp;
 using System;
 using System.Drawing;
 using System.Threading;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace AICircleDetector.AI
@@ -93,6 +95,42 @@ namespace AICircleDetector.AI
             return classMap;
         }
 
+        public static Example CreateExample(byte[] imageBytes, int width, int height, List<BoundingBox> boxes)
+        {
+            var xmin = boxes.Select(b => (float)b.XMin / width).ToList();
+            var ymin = boxes.Select(b => (float)b.YMin / height).ToList();
+            var xmax = boxes.Select(b => (float)b.XMax / width).ToList();
+            var ymax = boxes.Select(b => (float)b.YMax / height).ToList();
+
+            var classesText = boxes.Select(b => "circle").ToList();  // list of strings
+            var classes = boxes.Select(b => 1L).ToList();            // long values for labels
+
+            var features = new Features();
+
+            // Image bytes feature
+            features.feature.Add("image/encoded", TfFeatureHelper.Bytes(imageBytes));
+
+            // Image size
+            features.feature.Add("image/height", TfFeatureHelper.Int64(height));
+            features.feature.Add("image/width", TfFeatureHelper.Int64(width));
+
+            // Bounding box coordinates as floats
+            features.feature.Add("image/object/bbox/xmin", TfFeatureHelper.FloatList(xmin));
+            features.feature.Add("image/object/bbox/ymin", TfFeatureHelper.FloatList(ymin));
+            features.feature.Add("image/object/bbox/xmax", TfFeatureHelper.FloatList(xmax));
+            features.feature.Add("image/object/bbox/ymax", TfFeatureHelper.FloatList(ymax));
+
+            // Class text as bytes list
+            features.feature.Add("image/object/class/text", TfFeatureHelper.BytesList(classesText));
+
+            // Class labels as int64 list
+            features.feature.Add("image/object/class/label", TfFeatureHelper.Int64List(classes));
+
+            return new Example { Features = features };
+        }
+
+
+
         public static void CreateSerializedTFRecord(string dataListPath, string imagesPath, string annotationsPath, Dictionary<int, string> classMap, string tfRecordFileName)
         {
             var imageFilenames = File.ReadAllLines(dataListPath);
@@ -111,23 +149,15 @@ namespace AICircleDetector.AI
                     continue;
                 }
 
-                int label = GetLabelFromAnnotation(annotationPath, classMap);
+                // Parse bounding boxes from annotation XML (you'll need a helper method for this)
+                List<BoundingBox> boxes = ParseBoundingBoxesFromXml(annotationPath, classMap);
 
                 using Bitmap bmp = new Bitmap(imagePath);
                 using Bitmap resized = new Bitmap(bmp, new Size(AIConfig.ImageSize, AIConfig.ImageSize));
                 byte[] imageBytes = ImageToByteArray(resized);
 
-                Feature imageFeature = TfFeatureHelper.Bytes(imageBytes);
-                Feature labelFeature = TfFeatureHelper.Int64(label);
-
-                Features features = new Features();
-                features.feature.Add("image", imageFeature);
-                features.feature.Add("label", labelFeature);
-
-                Example example = new Example
-                {
-                    Features = features
-                };
+                // Create the Example with bounding boxes, normalized coords and image bytes
+                Example example = CreateExample(imageBytes, resized.Width, resized.Height, boxes);
 
                 // Serialize Example to byte array
                 byte[] exampleBytes;
@@ -142,6 +172,36 @@ namespace AICircleDetector.AI
             }
 
             Console.WriteLine($"{tfRecordFileName} created at {tfRecordFilePath}");
+        }
+
+        private static List<BoundingBox> ParseBoundingBoxesFromXml(string xmlFilePath, Dictionary<int, string> classMap = null)
+        {
+            var boxes = new List<BoundingBox>();
+            var doc = new XmlDocument();
+            doc.Load(xmlFilePath);
+
+            var objectNodes = doc.SelectNodes("//object");
+            if (objectNodes == null) return boxes;
+
+            foreach (XmlNode objNode in objectNodes)
+            {
+                var nameNode = objNode.SelectSingleNode("name");
+                if (nameNode == null || nameNode.InnerText != "circle")
+                    continue;  // Skip non-circle objects
+
+                var bndboxNode = objNode.SelectSingleNode("bndbox");
+                if (bndboxNode == null)
+                    continue;
+
+                int xmin = int.Parse(bndboxNode.SelectSingleNode("xmin").InnerText);
+                int ymin = int.Parse(bndboxNode.SelectSingleNode("ymin").InnerText);
+                int xmax = int.Parse(bndboxNode.SelectSingleNode("xmax").InnerText);
+                int ymax = int.Parse(bndboxNode.SelectSingleNode("ymax").InnerText);
+
+                boxes.Add(new BoundingBox(xmin, ymin, xmax, ymax));
+            }
+
+            return boxes;
         }
 
         private static void WriteTFRecord(Stream stream, byte[] data)
@@ -173,27 +233,42 @@ namespace AICircleDetector.AI
         }
 
 
-        public static int GetLabelFromAnnotation(string annotationPath, Dictionary<int, string> classMap)
+        public static (int count, List<int> diameters) GetLabelFromAnnotation(string annotationPath, Dictionary<int, string> classMap)
         {
-            //Console.WriteLine($"Processing annotation: {annotationPath}");
-
             try
             {
-                // Load the XML
                 var doc = XDocument.Load(annotationPath);
 
-                // Count all <object> elements — assuming each <object> represents a circle
-                int count = doc.Descendants("object").Count();
+                var objects = doc.Descendants("object").ToList();
+                int count = objects.Count;
 
-                //Console.WriteLine($"Extracted label (number of circles): {count}");
-                return count;
+                List<int> diameters = new List<int>();
+
+                foreach (var obj in objects)
+                {
+                    var bndbox = obj.Element("bndbox");
+                    if (bndbox != null)
+                    {
+                        int xmin = int.Parse(bndbox.Element("xmin")?.Value ?? "0");
+                        int ymin = int.Parse(bndbox.Element("ymin")?.Value ?? "0");
+                        int xmax = int.Parse(bndbox.Element("xmax")?.Value ?? "0");
+                        int ymax = int.Parse(bndbox.Element("ymax")?.Value ?? "0");
+
+                        int width = xmax - xmin;
+                        int height = ymax - ymin;
+                        int diameter = (width + height) / 2;
+                        diameters.Add(diameter);
+                    }
+                }
+
+                return (count, diameters);
             }
-            catch (Exception ex)
+            catch
             {
-                //Console.WriteLine($"Error reading annotation: {ex.Message}");
-                return 0; // Fallback
+                return (0, new List<int>());
             }
         }
+
 
 
         public static byte[] ImageToByteArray(Bitmap image)

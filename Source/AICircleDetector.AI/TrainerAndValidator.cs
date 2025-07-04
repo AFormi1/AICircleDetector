@@ -8,6 +8,8 @@ using System.Reflection.Metadata.Ecma335;
 using OneOf.Types;
 using Tensorflow.Keras.Callbacks;
 using Tensorflow.Keras.Engine;
+using Tensorflow.Keras.Layers;
+using Tensorflow.Keras.Losses;
 
 namespace AICircleDetector.AI
 {
@@ -85,7 +87,7 @@ namespace AICircleDetector.AI
                 if (cancellationToken.IsCancellationRequested)
                     return result;
 
-                var validationResult = Create_ND_array(valData, out NDArray xVal, out NDArray yVal, cancellationToken);
+                var validationResult = Create_ND_array(valData, out NDArray xVal, out NDArray yValCount, out NDArray yValDiameters, cancellationToken);
 
                 if (!validationResult.Success)
                     return validationResult;
@@ -94,9 +96,9 @@ namespace AICircleDetector.AI
                 if (cancellationToken.IsCancellationRequested)
                     return result;
 
-                yVal = yVal.reshape(new Shape(yVal.shape[0])); // ensure 1D labels
+                yValCount = yValCount.reshape(new Shape(yValCount.shape[0])); // ensure 1D labels
 
-                var evalResult = model.evaluate(xVal, yVal, verbose: 1);
+                var evalResult = model.evaluate(xVal, yValCount, verbose: 1);
 
                 float valLoss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;
                 float valMAE = evalResult.ContainsKey("mean_absolute_error") ? evalResult["mean_absolute_error"] : float.NaN;
@@ -164,79 +166,122 @@ namespace AICircleDetector.AI
         }
 
 
+        private static (byte[] imageBytes, int count, int[] diameters)? ParseExample(Example example, int maxCircles)
+        {
+            var featureMap = example.Features?.feature;
+            if (featureMap == null)
+                return null;
+
+            if (!featureMap.TryGetValue("image/encoded", out var imageFeature) ||
+                !featureMap.TryGetValue("image/object/bbox/xmin", out var xminFeature) ||
+                !featureMap.TryGetValue("image/object/bbox/ymin", out var yminFeature) ||
+                !featureMap.TryGetValue("image/object/bbox/xmax", out var xmaxFeature) ||
+                !featureMap.TryGetValue("image/object/bbox/ymax", out var ymaxFeature))
+                return null;
+
+            var imageBytes = imageFeature.BytesList?.Values?[0];
+            if (imageBytes == null || imageBytes.Length == 0)
+                return null;
+
+            var xmin = xminFeature?.FloatList?.Values?.ToList() ?? new List<float>();
+            var ymin = yminFeature?.FloatList?.Values?.ToList() ?? new List<float>();
+            var xmax = xmaxFeature?.FloatList?.Values?.ToList() ?? new List<float>();
+            var ymax = ymaxFeature?.FloatList?.Values?.ToList() ?? new List<float>();
+
+            int boxCount = Math.Min(Math.Min(xmin.Count, ymin.Count), Math.Min(xmax.Count, ymax.Count));
+            boxCount = Math.Min(boxCount, maxCircles);
+
+            // Calculate diameters (widths or heights of boxes)
+            int[] diameters = new int[maxCircles];
+            for (int i = 0; i < boxCount; i++)
+            {
+                var x = xmax[i] - xmin[i];  // normalized width
+                var y = ymax[i] - ymin[i];  // normalized height
+
+                var avg = (x + y) / 2.0f;
+
+                diameters[i] = (int)Math.Round(avg * AIConfig.TrainerShapeSize, 0);
+            }
+            // Remaining diameters default to zero
+
+            return (imageBytes, boxCount, diameters);
+        }
+
 
 
         public static AIResult TrainModel(CancellationToken cancellationToken, List<Example> trainData, string basePath)
         {
-            NDArray xTrain, yTrain;
+            NDArray xTrain, yTrainCount, yTrainDiameters;
 
-            var result = Create_ND_array(trainData, out xTrain, out yTrain, cancellationToken);
+            var result = Create_ND_array(trainData, out xTrain, out yTrainCount, out yTrainDiameters, cancellationToken);
 
             if (!result.Success)
                 return result;
 
-            AIResult trainingResult = SetupAndTrainModel(xTrain, yTrain, basePath);
+            AIResult trainingResult = SetupAndTrainModel(xTrain, yTrainCount, yTrainDiameters, basePath);
 
             return trainingResult;
         }
 
-        private static AIResult Create_ND_array(List<Example> trainData, out NDArray xTrain, out NDArray yTrain, CancellationToken cancellationToken)
+
+        private static AIResult Create_ND_array(List<Example> trainData, out NDArray xTrain, out NDArray yTrainCounts, out NDArray yTrainDiameters, CancellationToken cancellationToken)
         {
             int imageChannels = 1;
             int imageSize = AIConfig.TrainerShapeSize * AIConfig.TrainerShapeSize;
-
-            var images = new List<float[]>();
-            var labels = new List<int>();
+         
+            var images = new List<int[]>();
+            var counts = new List<int>();
+            var diametersList = new List<int[]>();  // List of diameter arrays (padded)
 
             foreach (var example in trainData)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     xTrain = null;
-                    yTrain = null;
+                    yTrainCounts = null;
+                    yTrainDiameters = null;
                     return new AIResult { Success = false, Message = "Training cancelled." };
                 }
 
-                var featureMap = example.Features?.feature;
-                if (featureMap == null ||
-                    !featureMap.TryGetValue("image", out var imageFeature) ||
-                    !featureMap.TryGetValue("label", out var labelFeature))
+                //will return: {byte[] image, CircleCount, int[] diameters }
+                var parsed = ParseExample(example, AIConfig.MaxCircles);
+                if (parsed == null)
                     continue;
 
-                var imageBytes = imageFeature.BytesList?.Values?[0];
-                var label = labelFeature.Int64List?.Values?[0] ?? 0;
-
-                if (imageBytes == null || imageBytes.Length == 0)
-                    continue;
+                var (imageBytes, count, paddedDiameters) = parsed.Value;
 
                 using var ms = new MemoryStream(imageBytes);
                 using var bmp = new Bitmap(ms);
                 using var resized = new Bitmap(bmp, new Size(AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize));
 
-                float[] imageFloats = new float[imageSize];
+                int[] imageFloats = new int[imageSize];
                 for (int y = 0; y < AIConfig.TrainerShapeSize; y++)
                 {
                     for (int x = 0; x < AIConfig.TrainerShapeSize; x++)
                     {
                         Color pixel = resized.GetPixel(x, y);
-                        float gray = (pixel.R + pixel.G + pixel.B) / 3f / 255f;
+                        int gray = (int)Math.Round((pixel.R + pixel.G + pixel.B) / 3f / 255f, 0);
                         imageFloats[y * AIConfig.TrainerShapeSize + x] = gray;
                     }
                 }
 
                 images.Add(imageFloats);
-                labels.Add((int)label);
+                counts.Add(count);
+                diametersList.Add(paddedDiameters);
             }
 
             if (images.Count == 0)
             {
                 xTrain = null;
-                yTrain = null;
+                yTrainCounts = null;
+                yTrainDiameters = null;
                 return new AIResult { Success = false, Message = "No valid training data found." };
             }
 
             int sampleCount = images.Count;
-            var reshapedImages = new float[sampleCount, AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize, imageChannels];
+            var reshapedImages = new int[sampleCount, AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize, imageChannels];
+            var labelsCounts = new int[sampleCount];
+            var labelsDiameters = new int[sampleCount, AIConfig.MaxCircles];
 
             for (int i = 0; i < sampleCount; i++)
             {
@@ -247,50 +292,65 @@ namespace AICircleDetector.AI
                         reshapedImages[i, row, col, 0] = images[i][row * AIConfig.TrainerShapeSize + col];
                     }
                 }
+                labelsCounts[i] = counts[i];
+
+                for (int d = 0; d < AIConfig.MaxCircles; d++)
+                    labelsDiameters[i, d] = diametersList[i][d];
             }
 
             xTrain = np.array(reshapedImages);
-            yTrain = np.array(labels.ToArray());
+            yTrainCounts = np.array(labelsCounts);
+            yTrainDiameters = np.array(labelsDiameters);
 
             return new AIResult { Success = true };
         }
 
 
-        public static AIResult SetupAndTrainModel(NDArray xTrain, NDArray yTrain, string basepath)
+        private static AIResult SetupAndTrainModel(NDArray xTrain, NDArray yTrainCount, NDArray yTrainDiameters, string basepath)
         {
-            // Reshape labels to 1D
-            yTrain = yTrain.reshape(new Shape(yTrain.shape[0]));
+            // Ensure proper label shape
+            yTrainCount = yTrainCount.reshape(new Shape(yTrainCount.shape[0], 1));
+            yTrainDiameters = yTrainDiameters.reshape(new Shape(yTrainDiameters.shape[0], AIConfig.MaxCircles));
 
             var layers = keras.layers;
+            var shape = new Shape(AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize, 1);
 
-            var inputs = keras.Input(shape: (AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize, 1), name: "input_layer");
+            var inputs = keras.Input(shape, name: "input_layer");
 
-            // Build the model
+            // CNN Backbone 
+            var input = keras.Input(shape: shape);
 
-            var x = layers.Conv2D(32, kernel_size: 3, activation: keras.activations.Relu, padding: "same").Apply(inputs);
-            x = layers.MaxPooling2D(pool_size: 2).Apply(x);
+            var x = layers.Conv2D(32, new Shape(3, 3), null, padding: "same").Apply(input);
+            x = layers.MaxPooling2D(pool_size: new Shape(2, 2)).Apply(x);
 
-            x = layers.Conv2D(64, kernel_size: 3, activation: keras.activations.Relu, padding: "same").Apply(x);
-            x = layers.MaxPooling2D(pool_size: 2).Apply(x);
+            x = layers.BatchNormalization().Apply(x);
+            x = layers.LeakyReLU().Apply(x);
+            x = layers.MaxPooling2D(2).Apply(x);
+
+            x = layers.Conv2D(64, new Shape(3, 3), null, padding: "same").Apply(input);
+            x = layers.BatchNormalization().Apply(x);
+            x = layers.LeakyReLU().Apply(x);
+            x = layers.MaxPooling2D(2).Apply(x);
 
             x = layers.Flatten().Apply(x);
+            x = layers.Dense(128).Apply(x);
+            x = layers.LeakyReLU().Apply(x);
+            x = layers.Dropout(0.5f).Apply(x);
+
+            // Output branches
             x = keras.layers.Dense(128, activation: keras.activations.Relu).Apply(x);
-            x = keras.layers.Dropout(0.5f).Apply(x);
 
-            // Output layer: 10 classes as you had before
-            var outputs = layers.Dense(1).Apply(x);
+            var countOutput = layers.Dense(1).Apply(x);
+            var diamOutput = layers.Dense(AIConfig.MaxCircles).Apply(x);
 
-
-            // 1. Build and compile your model
+            // Model
             IModel model;
-            if (Path.Exists(AIConfig.TrainingModelFullURL))
-            {
-                model = keras.models.load_model(AIConfig.TrainingModelFullURL);
-            }
-            else
-            {
-                model = keras.Model(inputs, outputs, name: "CircleDetection");
-            }
+            if (Path.Exists(AIConfig.TrainingModelFullURL))            
+                model = keras.models.load_model(AIConfig.TrainingModelFullURL);    
+            else            
+                model = keras.Model(inputs, new Tensors(countOutput, diamOutput), name: "CircleRegressionModel");
+
+
             model.summary();
 
             model.compile(
@@ -299,45 +359,131 @@ namespace AICircleDetector.AI
                 metrics: new[] { "mean_absolute_error" }
             );
 
-            int batch = 128;
-            int epochs = 200;
+            //todo - continue here with current exception, maybe problem with int[] vs float[]
 
-            // 4. Train
+            //var yTrainCountFloat = yTrainCount.astype(np.float32);
+            //var yTrainDiametersFloat = yTrainDiameters.astype(np.float32);
+
+            //var combinedLabels = np.concatenate(new NDArray[] { yTrainCountFloat.reshape(new Shape(-1, 1)), yTrainDiametersFloat }, axis: 1);
+
+
+            var combinedLabels = np.concatenate(new NDArray[] { yTrainCount.reshape(new Shape(-1, 1)), yTrainDiameters }, axis: 1);
+
+            // Train
             model.fit(
-                xTrain, yTrain,
-                batch_size: batch,
-                epochs: epochs,
+                xTrain,
+                combinedLabels,
+                batch_size: 128,
+                epochs: 200,
+                shuffle: true,
                 use_multiprocessing: true,
-                workers: Environment.ProcessorCount,  // Use all available threads
-                max_queue_size: 32,                   // Increase input queue size
-                shuffle: true                         // Ensures better generalization
+                workers: Environment.ProcessorCount,
+                max_queue_size: 32
             );
 
             Console.WriteLine("Training complete.");
 
             // Save the model
-            AIConfig.TrainingModelFullURL = AIConfig.TrainingModelFullURL;
+            model.save(AIConfig.TrainingModelFullURL);           
 
-            model.save(AIConfig.TrainingModelFullURL);
+            //float lossCount = eval.ContainsKey("count_output_loss") ? eval["count_output_loss"] : float.NaN;
+            //float lossDiam = eval.ContainsKey("diameter_output_loss") ? eval["diameter_output_loss"] : float.NaN;
+            //float maeCount = eval.ContainsKey("count_output_mean_absolute_error") ? eval["count_output_mean_absolute_error"] : float.NaN;
+            //float maeDiam = eval.ContainsKey("diameter_output_mean_absolute_error") ? eval["diameter_output_mean_absolute_error"] : float.NaN;
 
-            var evalResult = model.evaluate(xTrain, yTrain, verbose: 0, use_multiprocessing: true,
-                workers: Environment.ProcessorCount,  // Use all available threads
-                max_queue_size: 32); //Increase input queue size
-
-            // Safely retrieve loss and accuracy by key
-            float valLoss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;
-            float valMAE = evalResult.ContainsKey("mean_absolute_error") ? evalResult["mean_absolute_error"] : float.NaN;
-
-            var result = new AIResult
+            return new AIResult
             {
                 Success = true,
-                Message = "Training completed successfully.",
-                Loss = valLoss,
-                MAE = valMAE
+                Message = "Training completed successfully."//,
+                //Loss = lossCount + lossDiam,
+                //MAE = (maeCount + maeDiam) / 2.0f
             };
-
-            return result;
         }
+
+
+
+        //private static AIResult SetupAndTrainModel(NDArray xTrain, NDArray yTrainCount, NDArray yTrainDiameters, string basepath)
+        //{
+        //    // Reshape labels to 1D
+        //    yTrainCount = yTrainCount.reshape(new Shape(yTrainCount.shape[0]));
+
+        //    var layers = keras.layers;
+
+        //    var inputs = keras.Input(shape: (AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize, 1), name: "input_layer");
+
+        //    // Build the model
+
+        //    var x = layers.Conv2D(32, kernel_size: 3, activation: keras.activations.Relu, padding: "same").Apply(inputs);
+        //    x = layers.MaxPooling2D(pool_size: 2).Apply(x);
+
+        //    x = layers.Conv2D(64, kernel_size: 3, activation: keras.activations.Relu, padding: "same").Apply(x);
+        //    x = layers.MaxPooling2D(pool_size: 2).Apply(x);
+
+        //    x = layers.Flatten().Apply(x);
+        //    x = keras.layers.Dense(128, activation: keras.activations.Relu).Apply(x);
+        //    x = keras.layers.Dropout(0.5f).Apply(x);
+
+        //    // Output layer: 10 classes as you had before
+        //    var outputs = layers.Dense(1).Apply(x);
+
+
+        //    // 1. Build and compile your model
+        //    IModel model;
+        //    if (Path.Exists(AIConfig.TrainingModelFullURL))
+        //    {
+        //        model = keras.models.load_model(AIConfig.TrainingModelFullURL);
+        //    }
+        //    else
+        //    {
+        //        model = keras.Model(inputs, outputs, name: "CircleDetection");
+        //    }
+        //    model.summary();
+
+        //    model.compile(
+        //        optimizer: keras.optimizers.Adam(),
+        //        loss: keras.losses.MeanSquaredError(),
+        //        metrics: new[] { "mean_absolute_error" }
+        //    );
+
+        //    int batch = 128;
+        //    int epochs = 200;
+
+        //    // 4. Train
+        //    model.fit(
+        //        xTrain, yTrainCount,
+        //        batch_size: batch,
+        //        epochs: epochs,
+        //        use_multiprocessing: true,
+        //        workers: Environment.ProcessorCount,  // Use all available threads
+        //        max_queue_size: 32,                   // Increase input queue size
+        //        shuffle: true                         // Ensures better generalization
+        //    );
+
+        //    Console.WriteLine("Training complete.");
+
+        //    // Save the model
+        //    AIConfig.TrainingModelFullURL = AIConfig.TrainingModelFullURL;
+
+        //    model.save(AIConfig.TrainingModelFullURL);
+
+        //    var evalResult = model.evaluate(xTrain, yTrainCount, verbose: 0, use_multiprocessing: true,
+        //        workers: Environment.ProcessorCount,  // Use all available threads
+        //        max_queue_size: 32); //Increase input queue size
+
+        //    // Safely retrieve loss and accuracy by key
+        //    float valLoss = evalResult.ContainsKey("loss") ? evalResult["loss"] : float.NaN;
+        //    float valMAE = evalResult.ContainsKey("mean_absolute_error") ? evalResult["mean_absolute_error"] : float.NaN;
+
+        //    var result = new AIResult
+        //    {
+        //        Success = true,
+        //        Message = "Training completed successfully.",
+        //        Loss = valLoss,
+        //        MAE = valMAE
+        //    };
+
+        //    return result;
+        //}
 
 
     }

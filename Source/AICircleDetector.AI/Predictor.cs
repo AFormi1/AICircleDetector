@@ -58,10 +58,14 @@ namespace AICircleDetector.AI
                 // Get the predicted number of circles (raw float value)
                 //int predictedCircles = np.argmax(numpyArray);
 
-                float predictedCircles = output.numpy()[0, 0];     
+                double raw = output.numpy()[0, 0];
+
+                //double predictedCircles = raw * AIConfig.MaxCircles;
+
+                int predictedCount = (int)Math.Round(raw);
 
                 result.Success = true;
-                result.Message = $"Predicted Number of Circles: {predictedCircles}";
+                result.Message = $"Predicted Number of Circles: {predictedCount}";
                 Console.WriteLine(result.Message);
 
             }

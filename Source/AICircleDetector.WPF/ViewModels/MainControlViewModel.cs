@@ -63,10 +63,12 @@ namespace AICircleDetector.WPF.ViewModels
         {
             DataButtonEnabled = false;
             IsBusyDataCreation = true;
-                     
+
+            Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
+
             for (int i = 0; i < TrainingSetsCount; i++)
             {
-                await Task.Run(() => AI.TrainingDataBuilder.CreateTrainingData(imageCount: 400));
+                await Task.Run(async() => await AI.TrainingDataBuilder.CreateTrainingData(imageCount: 50000));
             }
 
 

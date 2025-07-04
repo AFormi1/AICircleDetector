@@ -14,11 +14,13 @@ namespace AICircleDetector.AI
     {
         private static readonly Random _rand = new();
 
-        public static TrainingDataBuilderResult CreateTrainingData(int imageCount = 20)
+        public static async Task<TrainingDataBuilderResult> CreateTrainingData(int imageCount = 20)
         {
             try
             {
                 string _currentGUID = Guid.NewGuid().ToString();
+
+                Console.WriteLine($"CreateTrainingData {_currentGUID} has started, please wait ...");
 
                 string _currentSessionDir = Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName, _currentGUID);
                 string _currentImageDir = Path.Combine(_currentSessionDir, AIConfig.ImageFolderName);
@@ -52,6 +54,7 @@ namespace AICircleDetector.AI
                 CreateSerializedTFRecord(trainListPath, _currentImageDir, _currentAnnotationDir, classMap, AIConfig.TrainDataName);
                 CreateSerializedTFRecord(valListPath, _currentImageDir, _currentAnnotationDir, classMap, AIConfig.ValDataName);
 
+                Console.WriteLine($"CreateTrainingData {_currentGUID} finished!");
 
                 return new TrainingDataBuilderResult
                 {
@@ -172,18 +175,26 @@ namespace AICircleDetector.AI
 
         public static int GetLabelFromAnnotation(string annotationPath, Dictionary<int, string> classMap)
         {
-            // Debugging: Print out the annotation path
-            Console.WriteLine($"Processing annotation: {annotationPath}");
+            //Console.WriteLine($"Processing annotation: {annotationPath}");
 
-            // Implement your own logic to parse XML and extract the label
-            // For example, you can use XML libraries such as System.Xml.Linq or other XML parsing methods
-            // For now, we return a placeholder value.
+            try
+            {
+                // Load the XML
+                var doc = XDocument.Load(annotationPath);
 
-            var label = 1; // Placeholder for actual logic
+                // Count all <object> elements — assuming each <object> represents a circle
+                int count = doc.Descendants("object").Count();
 
-            Console.WriteLine($"Extracted label: {label}");
-            return label;
+                //Console.WriteLine($"Extracted label (number of circles): {count}");
+                return count;
+            }
+            catch (Exception ex)
+            {
+                //Console.WriteLine($"Error reading annotation: {ex.Message}");
+                return 0; // Fallback
+            }
         }
+
 
         public static byte[] ImageToByteArray(Bitmap image)
         {

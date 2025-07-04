@@ -6,6 +6,8 @@ using ProtoBuf;
 using System.Drawing;
 using System.Reflection.Metadata.Ecma335;
 using OneOf.Types;
+using Tensorflow.Keras.Callbacks;
+using Tensorflow.Keras.Engine;
 
 namespace AICircleDetector.AI
 {
@@ -264,39 +266,60 @@ namespace AICircleDetector.AI
             var inputs = keras.Input(shape: (AIConfig.TrainerShapeSize, AIConfig.TrainerShapeSize, 1), name: "input_layer");
 
             // Build the model
-            var x = layers.Conv2D(32, kernel_size: 3, activation: "relu", padding: "same").Apply(inputs);
+
+            var x = layers.Conv2D(32, kernel_size: 3, activation: keras.activations.Relu, padding: "same").Apply(inputs);
             x = layers.MaxPooling2D(pool_size: 2).Apply(x);
 
-            x = layers.Conv2D(64, kernel_size: 3, activation: "relu", padding: "same").Apply(x);
+            x = layers.Conv2D(64, kernel_size: 3, activation: keras.activations.Relu, padding: "same").Apply(x);
             x = layers.MaxPooling2D(pool_size: 2).Apply(x);
 
             x = layers.Flatten().Apply(x);
-            x = layers.Dense(128, activation: "relu").Apply(x);
-            x = layers.Dropout(0.5f).Apply(x);
+            x = keras.layers.Dense(128, activation: keras.activations.Relu).Apply(x);
+            x = keras.layers.Dropout(0.5f).Apply(x);
 
             // Output layer: 10 classes as you had before
             var outputs = layers.Dense(1).Apply(x);
 
-            var model = keras.Model(inputs, outputs, name: "CircleDetection");
 
+            // 1. Build and compile your model
+            var model = keras.Model(inputs, outputs, name: "CircleDetection");
             model.summary();
 
-            //model.compile(optimizer: keras.optimizers.Adam(),
-            //              loss: keras.losses.SparseCategoricalCrossentropy(from_logits: true),
-            //              metrics: new[] { "accuracy" });
-
             model.compile(
-                    optimizer: keras.optimizers.Adam(),
-                    loss: keras.losses.MeanSquaredError(), // or MeanAbsoluteError
-                    metrics: new[] { "mean_absolute_error" } // or "mse"
-                );
+                optimizer: keras.optimizers.Adam(),
+                loss: keras.losses.MeanSquaredError(),
+                metrics: new[] { "mean_absolute_error" }
+            );
 
-            Console.WriteLine("Starting training...");
+            int epochs = 500;
 
-            // Train the model using your data (make sure xTrain is normalized [0,1])
-            model.fit(xTrain, yTrain,
-                      batch_size: 64,
-                      epochs: 100);
+            // 2. Prepare CallbackParams manually
+            var callbackParams = new CallbackParams
+            {
+                Model = model,
+                Verbose = 1,
+                Epochs = epochs, // match your training epochs
+                Steps = xTrain.shape[0] / 64 // assuming batch_size = 64
+            };
+
+            // 3. Create EarlyStopping using CallbackParams
+            var earlyStopping = new EarlyStopping(
+                parameters: callbackParams,
+                monitor: "loss",
+                min_delta: 0.001f,
+                patience: 10,
+                verbose: 1,
+                mode: "min",
+                restore_best_weights: true
+            );
+
+            // 4. Train with callbacks
+            model.fit(
+                xTrain, yTrain,
+                batch_size: 64,
+                epochs: epochs//,
+                //callbacks: new List<ICallback> { earlyStopping }
+            );
 
             Console.WriteLine("Training complete.");
 

@@ -1,10 +1,11 @@
-﻿using Google.Protobuf;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Tensorflow;
+using static Google.Protobuf.Compiler.CodeGeneratorResponse.Types;
 
 
 namespace AICircleDetector.AI
@@ -14,16 +15,7 @@ namespace AICircleDetector.AI
     {
         // For Bytes, we're dealing with byte arrays
         public static Feature Bytes(byte[] value) =>
-            new Feature
-            {
-                BytesList = new BytesList
-                {
-                    Values = { value }  // Directly add byte[]
-                }
-            };
-
-
-
+            new Feature { BytesList = new BytesList { Values = { Google.Protobuf.ByteString.CopyFrom(value).ToByteArray() } } };
 
         // For Int64, we convert a single long value to an array with one item
         public static Feature Int64(long value) =>
@@ -45,11 +37,48 @@ namespace AICircleDetector.AI
             var bytesList = new BytesList();
             foreach (var v in values)
             {
-                bytesList.Values.Add(Encoding.UTF8.GetBytes(v));  // directly add byte[]
+                // Convert ByteString to byte[] using ToByteArray()
+                bytesList.Values.Add(Google.Protobuf.ByteString.CopyFromUtf8(v).ToByteArray());
             }
             feature.BytesList = bytesList;
             return feature;
         }
+
+        public static (List<float> xmins, List<float> xmaxs, List<float> ymins, List<float> ymaxs, List<string> labelsText, List<long> labelsIdx)
+            ParseAnnotation(string annotationPath, Dictionary<string, int> labelMap)
+        {
+            var doc = XDocument.Load(annotationPath);
+            var objects = doc.Descendants("object");
+
+            var xmins = new List<float>();
+            var xmaxs = new List<float>();
+            var ymins = new List<float>();
+            var ymaxs = new List<float>();
+            var labelsText = new List<string>();
+            var labelsIdx = new List<long>();
+
+            foreach (var obj in objects)
+            {
+                var name = obj.Element("name")?.Value.Trim();
+                var labelIdx = labelMap[name!];
+
+                var bndbox = obj.Element("bndbox");
+                float xmin = float.Parse(bndbox.Element("xmin")?.Value!) / AIConfig.ImageSize.Width;
+                float ymin = float.Parse(bndbox.Element("ymin")?.Value!) / AIConfig.ImageSize.Height;
+                float xmax = float.Parse(bndbox.Element("xmax")?.Value!) / AIConfig.ImageSize.Width;
+                float ymax = float.Parse(bndbox.Element("ymax")?.Value!) / AIConfig.ImageSize.Height;
+
+                xmins.Add(xmin);
+                xmaxs.Add(xmax);
+                ymins.Add(ymin);
+                ymaxs.Add(ymax);
+                labelsText.Add(name);
+                labelsIdx.Add(labelIdx);
+            }
+
+            return (xmins, xmaxs, ymins, ymaxs, labelsText, labelsIdx);
+        }
+
 
     }
 }

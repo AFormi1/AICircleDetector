@@ -1,13 +1,10 @@
-﻿using AICircleDetector.AI;
-using Force.Crc32;
-using Google.Protobuf;
-using OneOf.Types;
-using ProtoBuf;
+﻿using Force.Crc32;
 using SkiaSharp;
 using System;
-using System.Drawing;
-using System.Threading;
-using System.Xml;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 
 namespace AICircleDetector.AI
@@ -16,7 +13,7 @@ namespace AICircleDetector.AI
     {
         private static readonly Random _rand = new();
 
-        public static async Task<TrainingDataBuilderResult> CreateTrainingData(int imageCount = 20)
+        public static async Task<bool> CreateTrainingData(int imageCount)
         {
             try
             {
@@ -32,7 +29,9 @@ namespace AICircleDetector.AI
 
                 string trainListPath = Path.Combine(_currentSessionDir, AIConfig.TrainListName);
                 string valListPath = Path.Combine(_currentSessionDir, AIConfig.ValListName);
-                string trainvalListPath = Path.Combine(_currentSessionDir, AIConfig.TrainValListName);
+
+                string trainTfPath = Path.Combine(_currentSessionDir, AIConfig.TrainingTF);
+                string valTfPath = Path.Combine(_currentSessionDir, AIConfig.ValidationTF);
 
 
                 Directory.CreateDirectory(_currentImageDir!);
@@ -48,236 +47,173 @@ namespace AICircleDetector.AI
                     SaveAnnotationXml(_currentAnnotationDir, fileName, circles);
                 }
 
-                CreateTrainValFiles(imageCount, trainListPath, valListPath, trainvalListPath, ".png", 0.2);
+                CreateTrainValFiles(imageCount, trainListPath, valListPath, ".png", 0.2);
 
                 CreateLabelMap(labelMapPath!);
                 var classMap = ParseLabelMap(labelMapPath);
 
-                CreateSerializedTFRecord(trainListPath, _currentImageDir, _currentAnnotationDir, classMap, AIConfig.TrainDataName);
-                CreateSerializedTFRecord(valListPath, _currentImageDir, _currentAnnotationDir, classMap, AIConfig.ValDataName);
+                CreateSerializedTFRecord(trainListPath, _currentImageDir, _currentAnnotationDir, classMap, trainTfPath);
+                CreateSerializedTFRecord(valListPath, _currentImageDir, _currentAnnotationDir, classMap, valTfPath);
 
                 Console.WriteLine($"CreateTrainingData {_currentGUID} finished!");
 
-                return new TrainingDataBuilderResult
-                {
-                    Success = true,
-                    Message = $"Successfully generated {imageCount} training images.",
-                    OutputDirectory = _currentSessionDir!
-                };
+                return true;
             }
             catch (Exception ex)
             {
-                return new TrainingDataBuilderResult
-                {
-                    Success = false,
-                    Message = $"Error during generation: {ex.Message}",
-                    OutputDirectory = string.Empty
-                };
+                return false;
             }
         }
 
-
-        public static Dictionary<int, string> ParseLabelMap(string labelMapPath)
+        public static void CreateSerializedTFRecord(
+            string listFilePath,
+            string imageDir,
+            string annotationDir,
+            Dictionary<string, int> labelMap,
+            string outputTFRecordPath)
         {
-            // Example logic to parse label map (adjust as needed)
-            var classMap = new Dictionary<int, string>();
+            using var outputStream = File.Create(outputTFRecordPath);
 
-            foreach (var line in File.ReadLines(labelMapPath))
+            foreach (var imageId in File.ReadAllLines(listFilePath))
             {
-                if (line.Contains("id:"))
-                {
-                    int id = int.Parse(line.Split(':')[1].Trim());
-                    string name = File.ReadLines(labelMapPath).SkipWhile(x => !x.Contains("name:")).First().Split(':')[1].Trim().Trim('"');
-                    classMap.Add(id, name);
-                }
-            }
-
-            return classMap;
-        }
-
-        public static Example CreateExample(byte[] imageBytes, int width, int height, List<BoundingBox> boxes)
-        {
-            var xmin = boxes.Select(b => (float)b.XMin / width).ToList();
-            var ymin = boxes.Select(b => (float)b.YMin / height).ToList();
-            var xmax = boxes.Select(b => (float)b.XMax / width).ToList();
-            var ymax = boxes.Select(b => (float)b.YMax / height).ToList();
-
-            var classesText = boxes.Select(b => "circle").ToList();  // list of strings
-            var classes = boxes.Select(b => 1L).ToList();            // long values for labels
-
-            var features = new Features();
-
-            // Image bytes feature
-            features.feature.Add("image/encoded", TfFeatureHelper.Bytes(imageBytes));
-
-            // Image size
-            features.feature.Add("image/height", TfFeatureHelper.Int64(height));
-            features.feature.Add("image/width", TfFeatureHelper.Int64(width));
-
-            // Bounding box coordinates as floats
-            features.feature.Add("image/object/bbox/xmin", TfFeatureHelper.FloatList(xmin));
-            features.feature.Add("image/object/bbox/ymin", TfFeatureHelper.FloatList(ymin));
-            features.feature.Add("image/object/bbox/xmax", TfFeatureHelper.FloatList(xmax));
-            features.feature.Add("image/object/bbox/ymax", TfFeatureHelper.FloatList(ymax));
-
-            // Class text as bytes list
-            features.feature.Add("image/object/class/text", TfFeatureHelper.BytesList(classesText));
-
-            // Class labels as int64 list
-            features.feature.Add("image/object/class/label", TfFeatureHelper.Int64List(classes));
-
-            return new Example { Features = features };
-        }
-
-
-
-        public static void CreateSerializedTFRecord(string dataListPath, string imagesPath, string annotationsPath, Dictionary<int, string> classMap, string tfRecordFileName)
-        {
-            var imageFilenames = File.ReadAllLines(dataListPath);
-            string tfRecordFilePath = Path.Combine(Path.GetDirectoryName(dataListPath), tfRecordFileName);
-
-            using var writer = new FileStream(tfRecordFilePath, FileMode.Create, FileAccess.Write);
-
-            foreach (var filename in imageFilenames)
-            {
-                string imagePath = Path.Combine(imagesPath, filename);
-                string annotationPath = Path.Combine(annotationsPath, Path.ChangeExtension(filename, ".xml"));
+                string imagePath = Path.Combine(imageDir, imageId + ".png");
+                string annotationPath = Path.Combine(annotationDir, imageId + ".xml");
 
                 if (!File.Exists(imagePath) || !File.Exists(annotationPath))
-                {
-                    Console.WriteLine($"Skipping missing file(s): {filename}");
-                    continue;
-                }
-
-                // Parse bounding boxes from annotation XML (you'll need a helper method for this)
-                List<BoundingBox> boxes = ParseBoundingBoxesFromXml(annotationPath, classMap);
-
-                using Bitmap bmp = new Bitmap(imagePath);
-                using Bitmap resized = new Bitmap(bmp, new Size(AIConfig.ImageSize, AIConfig.ImageSize));
-                byte[] imageBytes = ImageToByteArray(resized);
-
-                // Create the Example with bounding boxes, normalized coords and image bytes
-                Example example = CreateExample(imageBytes, resized.Width, resized.Height, boxes);
-
-                // Serialize Example to byte array
-                byte[] exampleBytes;
-                using (var ms = new MemoryStream())
-                {
-                    Serializer.Serialize(ms, example);
-                    exampleBytes = ms.ToArray();
-                }
-
-                // Write TFRecord formatted record
-                WriteTFRecord(writer, exampleBytes);
-            }
-
-            Console.WriteLine($"{tfRecordFileName} created at {tfRecordFilePath}");
-        }
-
-        private static List<BoundingBox> ParseBoundingBoxesFromXml(string xmlFilePath, Dictionary<int, string> classMap = null)
-        {
-            var boxes = new List<BoundingBox>();
-            var doc = new XmlDocument();
-            doc.Load(xmlFilePath);
-
-            var objectNodes = doc.SelectNodes("//object");
-            if (objectNodes == null) return boxes;
-
-            foreach (XmlNode objNode in objectNodes)
-            {
-                var nameNode = objNode.SelectSingleNode("name");
-                if (nameNode == null || nameNode.InnerText != "circle")
-                    continue;  // Skip non-circle objects
-
-                var bndboxNode = objNode.SelectSingleNode("bndbox");
-                if (bndboxNode == null)
                     continue;
 
-                int xmin = int.Parse(bndboxNode.SelectSingleNode("xmin").InnerText);
-                int ymin = int.Parse(bndboxNode.SelectSingleNode("ymin").InnerText);
-                int xmax = int.Parse(bndboxNode.SelectSingleNode("xmax").InnerText);
-                int ymax = int.Parse(bndboxNode.SelectSingleNode("ymax").InnerText);
+                var imageBytes = File.ReadAllBytes(imagePath);
+                var (xmins, xmaxs, ymins, ymaxs, labelsText, labelsIdx) = TfFeatureHelper.ParseAnnotation(annotationPath, labelMap);
 
-                boxes.Add(new BoundingBox(xmin, ymin, xmax, ymax));
-            }
-
-            return boxes;
-        }
-
-        private static void WriteTFRecord(Stream stream, byte[] data)
-        {
-            // Length (ulong)
-            ulong length = (ulong)data.Length;
-            byte[] lengthBytes = BitConverter.GetBytes(length);
-            stream.Write(lengthBytes, 0, 8);
-
-            // Length CRC
-            uint lengthCrc = MaskedCrc32c(lengthBytes);
-            byte[] lengthCrcBytes = BitConverter.GetBytes(lengthCrc);
-            stream.Write(lengthCrcBytes, 0, 4);
-
-            // Data
-            stream.Write(data, 0, data.Length);
-
-            // Data CRC
-            uint dataCrc = MaskedCrc32c(data);
-            byte[] dataCrcBytes = BitConverter.GetBytes(dataCrc);
-            stream.Write(dataCrcBytes, 0, 4);
-        }
-
-        // Implementation of masked CRC32c for TFRecord
-        private static uint MaskedCrc32c(byte[] data)
-        {
-            uint crc = Crc32Algorithm.Compute(data);
-            return ((crc >> 15) | (crc << 17)) + 0xa282ead8;
-        }
-
-
-        public static (int count, List<int> diameters) GetLabelFromAnnotation(string annotationPath, Dictionary<int, string> classMap)
-        {
-            try
-            {
-                var doc = XDocument.Load(annotationPath);
-
-                var objects = doc.Descendants("object").ToList();
-                int count = objects.Count;
-
-                List<int> diameters = new List<int>();
-
-                foreach (var obj in objects)
+                var features = new Features
                 {
-                    var bndbox = obj.Element("bndbox");
-                    if (bndbox != null)
+                    feature = new Dictionary<string, Feature>
                     {
-                        int xmin = int.Parse(bndbox.Element("xmin")?.Value ?? "0");
-                        int ymin = int.Parse(bndbox.Element("ymin")?.Value ?? "0");
-                        int xmax = int.Parse(bndbox.Element("xmax")?.Value ?? "0");
-                        int ymax = int.Parse(bndbox.Element("ymax")?.Value ?? "0");
+                        ["image/encoded"] = TfFeatureHelper.Bytes(imageBytes),
+                        ["image/filename"] = TfFeatureHelper.BytesList(new[] { imageId + ".png" }),
+                        ["image/format"] = TfFeatureHelper.BytesList(new[] { "png" }),
 
-                        int width = xmax - xmin;
-                        int height = ymax - ymin;
-                        int diameter = (width + height) / 2;
-                        diameters.Add(diameter);
+                        ["image/object/bbox/xmin"] = TfFeatureHelper.FloatList(xmins),
+                        ["image/object/bbox/xmax"] = TfFeatureHelper.FloatList(xmaxs),
+                        ["image/object/bbox/ymin"] = TfFeatureHelper.FloatList(ymins),
+                        ["image/object/bbox/ymax"] = TfFeatureHelper.FloatList(ymaxs),
+                        ["image/object/class/text"] = TfFeatureHelper.BytesList(labelsText),
+                        ["image/object/class/label"] = TfFeatureHelper.Int64List(labelsIdx),
                     }
-                }
+                };
 
-                return (count, diameters);
-            }
-            catch
-            {
-                return (0, new List<int>());
+                var example = new Example { Features = features };
+
+                // Serialize and write the Example
+                using var ms = new MemoryStream();
+                ProtoBuf.Serializer.Serialize(ms, example);
+
+                var data = ms.ToArray();
+                var lengthBytes = BitConverter.GetBytes((ulong)data.Length);
+                outputStream.Write(lengthBytes);     // Write length
+                outputStream.Write(data);            // Write serialized example
             }
         }
 
 
-
-        public static byte[] ImageToByteArray(Bitmap image)
+        private static uint Crc32C(byte[] data)
         {
-            using (var ms = new MemoryStream())
+            return Crc32CAlgorithm.Compute(data);
+        }
+
+        private static Dictionary<string, int> ParseLabelMap(string labelMapPath)
+        {
+            var lines = File.ReadAllLines(labelMapPath);
+            var map = new Dictionary<string, int>();
+
+            int? currentId = null;
+            foreach (var line in lines)
             {
-                image.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                return ms.ToArray();
+                if (line.Trim().StartsWith("id:"))
+                    currentId = int.Parse(line.Split(':')[1].Trim());
+                else if (line.Trim().StartsWith("name:") && currentId.HasValue)
+                {
+                    var name = line.Split(':')[1].Trim().Trim('\'', '"');
+                    map[name] = currentId.Value;
+                    currentId = null;
+                }
             }
+            return map;
+        }
+
+
+        private static void CreateLabelMap(string labelMapPath)
+        {
+            var labelMap = new StringBuilder();
+            labelMap.AppendLine("item {");
+            labelMap.AppendLine("  id: 1");
+            labelMap.AppendLine("  name: 'circle'");
+            labelMap.AppendLine("}");
+            File.WriteAllText(labelMapPath, labelMap.ToString());
+        }
+
+        private static void CreateTrainValFiles(
+            int imageCount,
+            string trainListPath,
+            string valListPath,
+            string imageExtension = ".png",
+            double valSplit = 0.2)
+        {
+            var allFiles = Enumerable.Range(0, imageCount)
+                                      .Select(i => $"log_{i:D3}")
+                                      .OrderBy(name => name) // Sort alphabetically/logically
+                                      .ToList();
+
+            int valCount = (int)(imageCount * valSplit);
+            var valFiles = allFiles.Take(valCount).ToList();
+            var trainFiles = allFiles.Skip(valCount).ToList();
+
+            File.WriteAllLines(trainListPath, trainFiles);
+            File.WriteAllLines(valListPath, valFiles);
+        }
+
+
+
+        private static void SaveAnnotationXml(string annotationDir, string imageFileName, List<(float x, float y, float r)> circles)
+        {
+            string fileNameWithoutExt = Path.GetFileNameWithoutExtension(imageFileName);
+            string xmlPath = Path.Combine(annotationDir, $"{fileNameWithoutExt}.xml");
+
+            var imageWidth = AIConfig.ImageSize.Width;
+            var imageHeight = AIConfig.ImageSize.Height;
+
+            var doc = new XDocument(
+                new XElement("annotation",
+                    new XElement("folder", "images"),
+                    new XElement("filename", imageFileName),
+                    new XElement("size",
+                        new XElement("width", imageWidth),
+                        new XElement("height", imageHeight),
+                        new XElement("depth", 3)
+                    ),
+                    circles.Select(c => {
+                        int xmin = (int)(c.x - c.r);
+                        int ymin = (int)(c.y - c.r);
+                        int xmax = (int)(c.x + c.r);
+                        int ymax = (int)(c.y + c.r);
+
+                        return new XElement("object",
+                            new XElement("name", "circle"),
+                            new XElement("pose", "Unspecified"),
+                            new XElement("truncated", 0),
+                            new XElement("difficult", 0),
+                            new XElement("bndbox",
+                                new XElement("xmin", xmin),
+                                new XElement("ymin", ymin),
+                                new XElement("xmax", xmax),
+                                new XElement("ymax", ymax)
+                            )
+                        );
+                    })
+                )
+            );
+
+            doc.Save(xmlPath);
         }
 
 
@@ -286,16 +222,16 @@ namespace AICircleDetector.AI
             const int maxAttempts = 1000;
             var placedCircles = new List<(float x, float y, float r)>();
 
-            using SKBitmap bitmap = new SKBitmap(AIConfig.ImageSize, AIConfig.ImageSize);
+            using SKBitmap bitmap = new SKBitmap(AIConfig.ImageSize.Width, AIConfig.ImageSize.Height);
             using SKCanvas canvas = new SKCanvas(bitmap);
             canvas.Clear(SKColors.White);
 
             int attempts = 0;
             while (placedCircles.Count < ringCount && attempts < maxAttempts)
             {
-                float radius = _rand.Next(5, AIConfig.ImageSize / 4);
-                float x = _rand.Next((int)radius, AIConfig.ImageSize - (int)radius);
-                float y = _rand.Next((int)radius, AIConfig.ImageSize - (int)radius);
+                float radius = _rand.Next(5, (AIConfig.ImageSize.Height + AIConfig.ImageSize.Width) / 2 / 4);
+                float x = _rand.Next((int)radius, AIConfig.ImageSize.Width - (int)radius);
+                float y = _rand.Next((int)radius, AIConfig.ImageSize.Height - (int)radius);
 
                 bool collides = placedCircles.Any(c =>
                 {
@@ -333,51 +269,6 @@ namespace AICircleDetector.AI
             return placedCircles;
         }
 
-        private static void SaveAnnotationXml(string _currentAnnotationDir, string imageFileName, List<(float x, float y, float r)> circles)
-        {
-            string imagePath = Path.Combine("images", imageFileName);
-            string annotationPath = Path.Combine(_currentAnnotationDir!, Path.ChangeExtension(imageFileName, ".xml"));
-
-            var annotation = new XElement("annotation",
-                new XElement("folder", "images"),
-                new XElement("filename", imageFileName),
-                new XElement("path", imagePath),
-                new XElement("source",
-                    new XElement("database", "Unknown")),
-                new XElement("size",
-                    new XElement("width", AIConfig.ImageSize),
-                    new XElement("height", AIConfig.ImageSize),
-                    new XElement("depth", 3)),
-                new XElement("segmented", 0)
-            );
-
-            foreach (var (x, y, r) in circles)
-            {
-                int xmin = (int)(x - r);
-                int ymin = (int)(y - r);
-                int xmax = (int)(x + r);
-                int ymax = (int)(y + r);
-
-                annotation.Add(
-                    new XElement("object",
-                        new XElement("name", "circle"),
-                        new XElement("pose", "Unspecified"),
-                        new XElement("truncated", 0),
-                        new XElement("difficult", 0),
-                        new XElement("bndbox",
-                            new XElement("xmin", xmin),
-                            new XElement("ymin", ymin),
-                            new XElement("xmax", xmax),
-                            new XElement("ymax", ymax)
-                        )
-                    )
-                );
-            }
-
-            XDocument xmlDoc = new(annotation);
-            xmlDoc.Save(annotationPath);
-        }
-
         private static SKColor RandomGreenBrown()
         {
             int r = _rand.Next(60, 160);
@@ -385,37 +276,5 @@ namespace AICircleDetector.AI
             int b = _rand.Next(30, 100);
             return new SKColor((byte)r, (byte)g, (byte)b);
         }
-
-        private static void CreateLabelMap(string labelMapPath)
-        {
-            var content = "item {\n  id: 1\n  name: 'circle'\n}\n";
-            File.WriteAllText(labelMapPath, content);
-        }
-
-        private static void CreateTrainValFiles(int imageCount, string trainListPath, string valListPath, string trainvalListPath, string fileExtension, double validationSplit)
-        {
-            var allFilenames = Enumerable.Range(0, imageCount)
-                                         .Select(i => $"log_{i:D3}{fileExtension}")
-                                         .ToList();
-
-            // Shuffle the filenames to ensure randomness
-            var shuffledFilenames = allFilenames.OrderBy(x => _rand.Next()).ToList();
-
-            // Split the shuffled list into train and val based on the split ratio (80% train, 20% val)
-            int valCount = (int)(imageCount * validationSplit);  // 20% for validation
-            var valFilenames = shuffledFilenames.Take(valCount).ToList();
-            var trainFilenames = shuffledFilenames.Skip(valCount).ToList();
-
-            // Write to trainval.txt (all filenames)
-            File.WriteAllLines(trainvalListPath, allFilenames);
-
-            // Write to train.txt (80% for training)
-            File.WriteAllLines(trainListPath, trainFilenames);
-
-            // Write to val.txt (20% for validation)
-            File.WriteAllLines(valListPath, valFilenames);
-        }
-
-
     }
 }

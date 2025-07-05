@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 
 namespace AICircleDetector.AI
 {
-    public class Annotation
+    public class CircleAnnotation
     {
-        public string ImageFilename { get; set; }
-        public int Label { get; set; }
+        public string filename { get; set; }
+        public List<BoundingBox> circles { get; set; }
     }
 }

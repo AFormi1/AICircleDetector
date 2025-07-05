@@ -71,6 +71,8 @@ namespace AICircleDetector.WPF.ViewModels
             DataButtonEnabled = false;
             IsBusyDataCreation = true;
 
+            bool result = false;
+
             EnableConsole();
 
             for (int i = 0; i < TrainingSetsCount; i++)
@@ -82,11 +84,13 @@ namespace AICircleDetector.WPF.ViewModels
                     imageCount = 200;
                     ImageCount = "200";
                 }
-                await Task.Run(async () => await AI.TrainingDataBuilder.CreateTrainingData(imageCount: imageCount));
+                await Task.Run(async () => result = await AI.TrainingDataBuilder.CreateTrainingData(imageCount: imageCount));
             }
 
-
-            MessageBox.Show($"Testfiles have been created successfully to\r\n{Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName)}", "Result", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (result)
+                MessageBox.Show($"Testfiles have been created successfully to\r\n{Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName)}", "Result", MessageBoxButton.OK, MessageBoxImage.Information);
+            else
+                MessageBox.Show($"An error occurred while creating the testfiles!", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
 
             DataButtonEnabled = true;
             IsBusyDataCreation = false;
@@ -124,7 +128,7 @@ namespace AICircleDetector.WPF.ViewModels
                     Stopwatch stopwatch = new Stopwatch();
                     stopwatch.Start();
 
-                    results.Add(await Task.Run(() => AI.TrainerAndValidator.Train(CancelToken, folderName)));
+                    //results.Add(await Task.Run(() => AI.TrainerAndValidator.Train(CancelToken, folderName)));
 
                     stopwatch.Stop();
 
@@ -202,7 +206,7 @@ namespace AICircleDetector.WPF.ViewModels
 
                     string folderName = folderDialog.FolderName;
 
-                    results.Add(await Task.Run(() => AI.TrainerAndValidator.Validate(CancelToken, folderName)));
+                    //results.Add(await Task.Run(() => AI.TrainerAndValidator.Validate(CancelToken, folderName)));
 
                     // Calculate the average loss and accuracy from the results
                     float res1 = results.Average(result => result.Loss);
@@ -272,13 +276,13 @@ namespace AICircleDetector.WPF.ViewModels
                 EnableConsole();
 
                 // RUN: Training on background thread
-                AI.AIResult result = await Task.Run(() => AI.Predictor.Predict(imageURL));
+                //AI.AIResult result = await Task.Run(() => AI.Predictor.Predict(imageURL));
 
                 // RESULT: Show success/error popup
-                MessageBox.Show(result.Message,
-                    result.Success ? "Success" : "Error",
-                    MessageBoxButton.OK,
-                    result.Success ? MessageBoxImage.Information : MessageBoxImage.Error);
+                //MessageBox.Show(result.Message,
+                //    result.Success ? "Success" : "Error",
+                //    MessageBoxButton.OK,
+                //    result.Success ? MessageBoxImage.Information : MessageBoxImage.Error);
             }
 
             catch (Exception ex)

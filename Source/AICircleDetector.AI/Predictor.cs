@@ -58,10 +58,14 @@ namespace AICircleDetector.AI
                     float xMax = (float)predictions[0, i, 2];
                     float yMax = (float)predictions[0, i, 3];
 
-                    if ((xMax - xMin) > 0.01f && (yMax - yMin) > 0.01f)
-                    {
-                        detectedBoxes++;
-                    }
+                    //make some checks to eliminate possible trash
+                    if ((xMax - xMin) < 0.01f && (yMax - yMin) < 0.01f) continue;
+
+                    float area = (xMax - xMin) * (yMax - yMin);
+                    if (area < 0.001f) continue;
+
+                    detectedBoxes++;
+
                 }
 
                 return $"Prediction completed:\r\nNumber of detected BoundingBoxes (Circles): {detectedBoxes}";

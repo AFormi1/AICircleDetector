@@ -182,6 +182,7 @@ namespace AICircleDetector.WPF.ViewModels
             }
             else
             {
+                Console.SetOut(new ConsoleBindingWriter(AppendConsoleLine));
                 Console.WriteLine("Logging disabled due to speed up the process");
                 Console.SetOut(TextWriter.Null);
             }

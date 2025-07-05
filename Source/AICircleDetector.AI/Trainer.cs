@@ -17,6 +17,7 @@ namespace AICircleDetector.AI
 {
     public static class Trainer
     {
+
         public static string Train(string basepath)
         {
             try

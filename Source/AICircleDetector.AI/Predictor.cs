@@ -9,7 +9,7 @@ namespace AICircleDetector.AI
     public static class Predictor
     {
         public static string Predict(string imagePath)
-        {          
+        {
             try
             {
                 if (!Path.Exists(AIConfig.TrainingModelFullURL))
@@ -17,7 +17,7 @@ namespace AICircleDetector.AI
                     string msg = "Predictor: Did not set the path to the Trained Model - please run Training and Validate Before!";
                     return msg;
                 }
-             
+
 
                 Console.WriteLine("Predictor: loading image...");
                 NDArray inputTensor = LoadImage(imagePath, AIConfig.ImageShape);
@@ -25,7 +25,7 @@ namespace AICircleDetector.AI
                 Console.WriteLine($"Input shape: {inputTensor.shape}, dtype: {inputTensor.dtype}");
 
                 Console.WriteLine("Predictor: loading model...");
-                             
+
                 var model = keras.models.load_model(AIConfig.TrainingModelFullURL);
 
                 model.summary();
@@ -37,19 +37,34 @@ namespace AICircleDetector.AI
 
 
                 Console.WriteLine("Predictor: running prediction...");
+
                 Tensors output = model.predict(
-                    inputTensor, 
+                    inputTensor,
                     use_multiprocessing: true,
-                    workers: Environment.ProcessorCount, 
+                    workers: Environment.ProcessorCount,
                     max_queue_size: 32);
 
-                var boxes = new List<(float xmin, float ymin, float xmax, float ymax)>();
 
-        
-                int numBoxes = (int)output.shape[1];
+                NDArray predictions = output.numpy();
 
+                int numBoxes = (int)predictions.shape.dims[1];
 
-                return $"Prediction completed:\r\nNumber of detected BoundingBoxes (Circles): {numBoxes}";
+                int detectedBoxes = 0;
+
+                for (int i = 0; i < numBoxes; i++)
+                {
+                    float xMin = (float)predictions[0, i, 0];
+                    float yMin = (float)predictions[0, i, 1];
+                    float xMax = (float)predictions[0, i, 2];
+                    float yMax = (float)predictions[0, i, 3];
+
+                    if ((xMax - xMin) > 0.01f && (yMax - yMin) > 0.01f)
+                    {
+                        detectedBoxes++;
+                    }
+                }
+
+                return $"Prediction completed:\r\nNumber of detected BoundingBoxes (Circles): {detectedBoxes}";
 
             }
             catch (Exception ex)

@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading.Channels;
 using System.Threading;
 using System.Linq;
+using Tensorflow.Keras.Losses;
 
 namespace AICircleDetector.AI
 {
@@ -22,7 +23,8 @@ namespace AICircleDetector.AI
         {
             try
             {
-                int epochs = 50;
+                int epochs = 100;
+                int batchSize = 128;
 
                 // Paths
                 string modelPath = AIConfig.TrainingModelFullURL;
@@ -36,7 +38,7 @@ namespace AICircleDetector.AI
                 }
                 else
                 {
-                    var input = keras.Input(shape: AIConfig.ImageShape);
+                    Tensor input = keras.Input(shape: (AIConfig.ImageShape, AIConfig.ImageShape, 1));
 
                     var x = keras.layers.Conv2D(32, 3, activation: keras.activations.Relu).Apply(input);
                     x = keras.layers.MaxPooling2D().Apply(x);
@@ -44,48 +46,64 @@ namespace AICircleDetector.AI
                     x = keras.layers.MaxPooling2D().Apply(x);
                     x = keras.layers.Flatten().Apply(x);
                     x = keras.layers.Dense(128, activation: keras.activations.Relu).Apply(x);
-                    var output = keras.layers.Dense(4, activation: keras.activations.Sigmoid).Apply(x); // xmin, ymin, xmax, ymax
 
-                    model = keras.Model(input, output, name: AIConfig.TrainingModelName);
+                    var bbox_output = keras.layers.Dense(AIConfig.MaxCircles * 4, activation: keras.activations.Sigmoid).Apply(x);
+                    bbox_output = keras.layers.Reshape((AIConfig.MaxCircles, 4)).Apply(bbox_output);
+
+                    model = keras.Model(input, bbox_output);
                 }
 
                 model.summary();
+
                 model.compile(
-                    optimizer: keras.optimizers.Adam(learning_rate: 0.001f),
+                    optimizer: keras.optimizers.Adam(),
                     loss: keras.losses.MeanSquaredError(),
-                    metrics: new[] { "mean_absolute_error" });
+                    metrics: new[] { "mean_absolute_error" }
+                );
+
+                List<Example> trainData = LoadTFRecord(trainTfPath);
+
+                NDArray xTrain, bboxTrain;
+                Create_ND_array(trainData, out xTrain, out bboxTrain);
 
 
-                var trainData = LoadTFRecord(trainTfPath);
+                string xt = $"xTrain shape: {xTrain.shape}, dtype: {xTrain.dtype}"; //expected format like: "xTrain shape: (737, 28, 28, 1), dtype: TF_FLOAT"
+                string bt = $"bboxTrain shape: {bboxTrain.shape}, dtype: {bboxTrain.dtype}"; //expected format like: "bboxTrain shape: (454, 10, 4), dtype: TF_FLOAT"
 
-                NDArray xTrain, yTrain;
-                Create_ND_array(trainData, out xTrain, out yTrain);
-
-                if (xTrain == null || yTrain == null)
-                    return $"Training failed:\r\nxTrain or yTrain is null";
+                if (xTrain == null || bboxTrain == null)
+                    return $"Training failed:\r\nOne of the required NDArrays is null";
 
 
-                // Train and Validate         
-                ICallback history = model.fit(xTrain, yTrain,
-                                    epochs: epochs,
-                                    use_multiprocessing: true,
-                                    workers: Environment.ProcessorCount,  // Use all available threads
-                                    max_queue_size: 32,                   // Increase input queue size
-                                    shuffle: true,                       // Ensures better generalizatio
-                                    validation_split: AIConfig.ValidationDataSplit);
+                ICallback history = model.fit(
+                    xTrain, bboxTrain,
+                    batch_size: batchSize,
+                    epochs: epochs,
+                    validation_split: 0.2f,
+                    shuffle: true,
+                    use_multiprocessing: true,
+                    workers: Environment.ProcessorCount,
+                    verbose: 1
+                );
 
                 // Save   
                 AIConfig.TrainingModelFullURL = AIConfig.TrainingModelFullURL;
-                model.save(modelPath);                      
-            
+                model.save(modelPath);
 
-                // Report
+
+                //Report
                 float loss = history.history["loss"].Last();
-                float mae = history.history["mean_absolute_error"].Last();
                 float val_loss = history.history["val_loss"].Last();
+
+                float mae = history.history["mean_absolute_error"].Last();
                 float val_mae = history.history["val_mean_absolute_error"].Last();
 
-                return $"Training completed:\r\nTrain Loss: {loss:F4}\r\nTrain MAE: {mae:F4}\r\nValidation Loss: {val_loss:F4}\r\nValidation MAE: {val_mae:F4}";
+                return
+                    $"Training completed:\n" +
+                    $"Training Loss: {loss:F4}\n" +
+                    $"Training MAE: {mae:F4}\n" +
+                    $"Validation Loss: {val_loss:F4}\n" +
+                    $"Validation MAE: {val_mae:F4}";
+
             }
             catch (Exception ex)
             {
@@ -93,21 +111,24 @@ namespace AICircleDetector.AI
             }
         }
 
-        
 
 
-        private static void Create_ND_array(List<Example> trainData, out NDArray xTrain, out NDArray yTrain)
+
+
+
+        private static void Create_ND_array(List<Example> trainData, out NDArray xTrain, out NDArray bboxTrain)
         {
             xTrain = null;
-            yTrain = null;
+            bboxTrain = null;
 
             try
             {
-                int imageChannels = 1;
+                int imageChannels = 1; // z.B. Graustufen
                 int imageSize = AIConfig.ImageShape * AIConfig.ImageShape;
+                int maxBoxes = AIConfig.MaxCircles; // z.B. 10 Boundingboxes pro Bild
 
                 var images = new List<float[]>();
-                var bboxes = new List<float[]>(); // store bbox as float[4] per example: [xmin, ymin, xmax, ymax]
+                var allBBoxes = new List<float[,]>();
 
                 foreach (var example in trainData)
                 {
@@ -136,15 +157,12 @@ namespace AICircleDetector.AI
                     if (boxCount == 0 || ymins.Length != boxCount || xmaxs.Length != boxCount || ymaxs.Length != boxCount)
                         continue;
 
-                    float xmin = xmins[0];
-                    float ymin = ymins[0];
-                    float xmax = xmaxs[0];
-                    float ymax = ymaxs[0];
-
+                    // Bild in Bitmap laden und auf AIConfig.ImageShape skalieren
                     using var ms = new MemoryStream(imageBytes);
                     using var bmp = new Bitmap(ms);
                     using var resized = new Bitmap(bmp, new Size(AIConfig.ImageShape, AIConfig.ImageShape));
 
+                    // Bild in float array (Graustufen 0..1) konvertieren
                     float[] imageFloats = new float[imageSize];
                     for (int y = 0; y < AIConfig.ImageShape; y++)
                     {
@@ -157,7 +175,20 @@ namespace AICircleDetector.AI
                     }
 
                     images.Add(imageFloats);
-                    bboxes.Add(new float[] { xmin, ymin, xmax, ymax });
+
+                    // Boundingboxes in gepolstertes Array packen (maxBoxes x 4)
+                    float[,] bboxes = new float[maxBoxes, 4];
+                    int usableCount = Math.Min(boxCount, maxBoxes);
+
+                    for (int i = 0; i < usableCount; i++)
+                    {
+                        bboxes[i, 0] = xmins[i];
+                        bboxes[i, 1] = ymins[i];
+                        bboxes[i, 2] = xmaxs[i];
+                        bboxes[i, 3] = ymaxs[i];
+                    }
+
+                    allBBoxes.Add(bboxes);
                 }
 
                 if (images.Count == 0)
@@ -165,8 +196,9 @@ namespace AICircleDetector.AI
 
                 int sampleCount = images.Count;
                 var reshapedImages = new float[sampleCount, AIConfig.ImageShape, AIConfig.ImageShape, imageChannels];
-                var bboxArray = new float[sampleCount, 4];
+                var bboxArray = new float[sampleCount, maxBoxes, 4];
 
+                // 1D Bildarrays in 4D Array (Samples, H, W, C) umwandeln
                 for (int i = 0; i < sampleCount; i++)
                 {
                     for (int row = 0; row < AIConfig.ImageShape; row++)
@@ -177,22 +209,29 @@ namespace AICircleDetector.AI
                         }
                     }
 
-                    for (int k = 0; k < 4; k++)
+                    // Boundingboxes übertragen
+                    for (int b = 0; b < maxBoxes; b++)
                     {
-                        bboxArray[i, k] = bboxes[i][k];
+                        for (int k = 0; k < 4; k++)
+                        {
+                            bboxArray[i, b, k] = allBBoxes[i][b, k];
+                        }
                     }
                 }
 
                 xTrain = np.array(reshapedImages);
-                yTrain = np.array(bboxArray);
+                bboxTrain = np.array(bboxArray);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Create_ND_array] Error: {ex.Message}");
                 xTrain = null;
-                yTrain = null;
+                bboxTrain = null;
             }
         }
+
+
+
 
 
 
@@ -200,7 +239,7 @@ namespace AICircleDetector.AI
         {
             List<Example> examples = new List<Example>();
 
-            using (var file = File.OpenRead(tfRecordPath))
+            using (FileStream file = File.OpenRead(tfRecordPath))
             {
                 while (file.Position < file.Length)
                 {
@@ -228,9 +267,9 @@ namespace AICircleDetector.AI
                     // Skip data CRC (4 bytes)
                     file.Seek(4, SeekOrigin.Current);
 
-                    using (var ms = new MemoryStream(data))
+                    using (MemoryStream ms = new MemoryStream(data))
                     {
-                        var example = Serializer.Deserialize<Example>(ms);
+                        Example example = Serializer.Deserialize<Example>(ms);
                         examples.Add(example);
                     }
                 }

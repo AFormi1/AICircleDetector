@@ -127,8 +127,7 @@ namespace AICircleDetector.WPF.ViewModels
             {
                 OpenFolderDialog folderDialog = new OpenFolderDialog
                 {
-                    Title = "Select Folder",
-                    InitialDirectory = AppDomain.CurrentDomain.BaseDirectory
+                    Title = "Select Folder"
                 };
 
                 if (folderDialog.ShowDialog() == true)
@@ -196,8 +195,7 @@ namespace AICircleDetector.WPF.ViewModels
             OpenFileDialog openFileDialog = new OpenFileDialog
             {
                 Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp;*.gif",
-                Title = "Select an Image",
-                InitialDirectory = AppDomain.CurrentDomain.BaseDirectory
+                Title = "Select an Image"
             };
 
             if (openFileDialog.ShowDialog() == true)
@@ -235,7 +233,7 @@ namespace AICircleDetector.WPF.ViewModels
 
                     stopwatch.Stop();
 
-                    result += $"\r\nPrediction took {stopwatch.Elapsed.TotalMilliseconds} ms";
+                    result += $"\r\nPrediction took {stopwatch.Elapsed.TotalMilliseconds:F0} ms";
 
                     if (result.Contains("completed"))
                         MessageBox.Show(result, "Prediction finished", MessageBoxButton.OK, MessageBoxImage.Information);

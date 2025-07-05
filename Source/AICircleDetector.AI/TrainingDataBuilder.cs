@@ -30,10 +30,8 @@ namespace AICircleDetector.AI
                 string labelMapPath = Path.Combine(_currentSessionDir, AIConfig.LabelMapName);
 
                 string trainListPath = Path.Combine(_currentSessionDir, AIConfig.TrainListName);
-                string valListPath = Path.Combine(_currentSessionDir, AIConfig.ValListName);
 
                 string trainTfPath = Path.Combine(_currentSessionDir, AIConfig.TrainingTF);
-                string valTfPath = Path.Combine(_currentSessionDir, AIConfig.ValidationTF);
 
 
                 Directory.CreateDirectory(_currentImageDir!);
@@ -49,13 +47,12 @@ namespace AICircleDetector.AI
                     SaveAnnotationXml(_currentAnnotationDir, fileName, circles);
                 }                      
 
-                CreateTrainValFiles(imageCount, trainListPath, valListPath, ".png", 0.2);
+                CreateTrainValFiles(imageCount, trainListPath, ".png");
 
                 CreateLabelMap(labelMapPath!);
                 var classMap = ParseLabelMap(labelMapPath);
 
                 CreateSerializedTFRecord(trainListPath, _currentImageDir, _currentAnnotationDir, classMap, trainTfPath);
-                CreateSerializedTFRecord(valListPath, _currentImageDir, _currentAnnotationDir, classMap, valTfPath);
 
                 Console.WriteLine($"CreateTrainingData {_currentGUID} finished!");
 
@@ -181,9 +178,7 @@ namespace AICircleDetector.AI
         private static void CreateTrainValFiles(
             int imageCount,
             string trainListPath,
-            string valListPath,
-            string fileExtension,
-            double valSplit)
+            string fileExtension)
         {
             var allFilenames = Enumerable.Range(0, imageCount)
                                           .Select(i => $"log_{i:D3}{fileExtension}")
@@ -197,14 +192,9 @@ namespace AICircleDetector.AI
                 return aNum.CompareTo(bNum);
             });
 
-            int valStartIndex = (int)(imageCount * (1 - valSplit));
-
-            var trainFiles = allFilenames.Take(valStartIndex).ToList();
-            var valFiles = allFilenames.Skip(valStartIndex).ToList();
-            var trainValFiles = allFilenames; // full list
-
+           
+            var trainFiles = allFilenames.ToList();          
             File.WriteAllLines(trainListPath, trainFiles);
-            File.WriteAllLines(valListPath, valFiles);
         }
 
 

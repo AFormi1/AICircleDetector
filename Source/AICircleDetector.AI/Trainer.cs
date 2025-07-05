@@ -22,10 +22,11 @@ namespace AICircleDetector.AI
         {
             try
             {
+                int epochs = 50;
+
                 // Paths
                 string modelPath = AIConfig.TrainingModelFullURL;
-                string trainTFRecord = Path.Combine(basepath, AIConfig.TrainingTF);
-                string valTFRecord = Path.Combine(basepath, AIConfig.ValidationTF);
+                string trainTfPath = Path.Combine(basepath, AIConfig.TrainingTF);
 
                 // Build and compile model
                 IModel model;
@@ -55,7 +56,7 @@ namespace AICircleDetector.AI
                     metrics: new[] { "mean_absolute_error" });
 
 
-                var trainData = LoadTFRecord(trainTFRecord);
+                var trainData = LoadTFRecord(trainTfPath);
 
                 NDArray xTrain, yTrain;
                 Create_ND_array(trainData, out xTrain, out yTrain);
@@ -64,30 +65,35 @@ namespace AICircleDetector.AI
                     return $"Training failed:\r\nxTrain or yTrain is null";
 
 
-                // Train
-                var history = model.fit(xTrain, yTrain,
-                                        epochs: 100,
-                                        use_multiprocessing: true,
-                                        workers: Environment.ProcessorCount,  // Use all available threads
-                                        max_queue_size: 32,                   // Increase input queue size
-                                        shuffle: true,                       // Ensures better generalizatio
-                                        validation_split: 0.0f);
+                // Train and Validate         
+                ICallback history = model.fit(xTrain, yTrain,
+                                    epochs: epochs,
+                                    use_multiprocessing: true,
+                                    workers: Environment.ProcessorCount,  // Use all available threads
+                                    max_queue_size: 32,                   // Increase input queue size
+                                    shuffle: true,                       // Ensures better generalizatio
+                                    validation_split: AIConfig.ValidationDataSplit);
 
                 // Save   
                 AIConfig.TrainingModelFullURL = AIConfig.TrainingModelFullURL;
-                model.save(modelPath);
+                model.save(modelPath);                      
+            
 
                 // Report
                 float loss = history.history["loss"].Last();
                 float mae = history.history["mean_absolute_error"].Last();
+                float val_loss = history.history["val_loss"].Last();
+                float val_mae = history.history["val_mean_absolute_error"].Last();
 
-                return $"Training completed:\r\nTrain Loss: {loss:F4}\r\nTrain MAE: {mae:F4}";
+                return $"Training completed:\r\nTrain Loss: {loss:F4}\r\nTrain MAE: {mae:F4}\r\nValidation Loss: {val_loss:F4}\r\nValidation MAE: {val_mae:F4}";
             }
             catch (Exception ex)
             {
                 return $"Training failed:\r\n{ex}";
             }
         }
+
+        
 
 
         private static void Create_ND_array(List<Example> trainData, out NDArray xTrain, out NDArray yTrain)

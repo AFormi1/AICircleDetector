@@ -1,4 +1,5 @@
 ﻿using Force.Crc32;
+using ProtoBuf;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
@@ -6,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace AICircleDetector.AI
 {
@@ -13,7 +15,7 @@ namespace AICircleDetector.AI
     {
         private static readonly Random _rand = new();
 
-        public static async Task<bool> CreateTrainingData(int imageCount)
+        public static bool CreateTrainingData(int imageCount)
         {
             try
             {
@@ -37,7 +39,7 @@ namespace AICircleDetector.AI
                 Directory.CreateDirectory(_currentImageDir!);
                 Directory.CreateDirectory(_currentAnnotationDir!);
 
-                for (int i = 1; i <= imageCount; i++)
+                for (int i = 0; i < imageCount; i++)
                 {
                     int ringCount = _rand.Next(AIConfig.MinCircles, AIConfig.MaxCircles + 1);
                     string fileName = $"log_{i:D3}.png";
@@ -72,12 +74,16 @@ namespace AICircleDetector.AI
             Dictionary<string, int> labelMap,
             string outputTFRecordPath)
         {
-            using var outputStream = File.Create(outputTFRecordPath);
+            using var writer = new FileStream(outputTFRecordPath, FileMode.Create, FileAccess.Write);
 
-            foreach (var imageId in File.ReadAllLines(listFilePath))
+            int i = 0;
+
+            foreach (string imageId in File.ReadAllLines(listFilePath))
             {
-                string imagePath = Path.Combine(imageDir, imageId + ".png");
-                string annotationPath = Path.Combine(annotationDir, imageId + ".xml");
+                string rawID = Path.GetFileNameWithoutExtension(imageId);
+
+                string imagePath = Path.Combine(imageDir, imageId);
+                string annotationPath = Path.Combine(annotationDir, rawID + ".xml");
 
                 if (!File.Exists(imagePath) || !File.Exists(annotationPath))
                     continue;
@@ -90,35 +96,55 @@ namespace AICircleDetector.AI
                     feature = new Dictionary<string, Feature>
                     {
                         ["image/encoded"] = TfFeatureHelper.Bytes(imageBytes),
-                        ["image/filename"] = TfFeatureHelper.BytesList(new[] { imageId + ".png" }),
-                        ["image/format"] = TfFeatureHelper.BytesList(new[] { "png" }),
-
                         ["image/object/bbox/xmin"] = TfFeatureHelper.FloatList(xmins),
                         ["image/object/bbox/xmax"] = TfFeatureHelper.FloatList(xmaxs),
                         ["image/object/bbox/ymin"] = TfFeatureHelper.FloatList(ymins),
                         ["image/object/bbox/ymax"] = TfFeatureHelper.FloatList(ymaxs),
-                        ["image/object/class/text"] = TfFeatureHelper.BytesList(labelsText),
-                        ["image/object/class/label"] = TfFeatureHelper.Int64List(labelsIdx),
                     }
                 };
 
                 var example = new Example { Features = features };
 
-                // Serialize and write the Example
-                using var ms = new MemoryStream();
-                ProtoBuf.Serializer.Serialize(ms, example);
+                // Serialize Example to byte array
+                byte[] exampleBytes;
+                using (var ms = new MemoryStream())
+                {
+                    Serializer.Serialize(ms, example);
+                    exampleBytes = ms.ToArray();
+                }
 
-                var data = ms.ToArray();
-                var lengthBytes = BitConverter.GetBytes((ulong)data.Length);
-                outputStream.Write(lengthBytes);     // Write length
-                outputStream.Write(data);            // Write serialized example
+                // Write TFRecord formatted record
+                WriteTFRecord(writer, exampleBytes);
+
+                i++;
             }
         }
 
-
-        private static uint Crc32C(byte[] data)
+        private static void WriteTFRecord(Stream stream, byte[] data)
         {
-            return Crc32CAlgorithm.Compute(data);
+            // Length (ulong)
+            ulong length = (ulong)data.Length;
+            byte[] lengthBytes = BitConverter.GetBytes(length);
+            stream.Write(lengthBytes, 0, 8);
+
+            // Length CRC
+            uint lengthCrc = Crc32c(lengthBytes);
+            byte[] lengthCrcBytes = BitConverter.GetBytes(lengthCrc);
+            stream.Write(lengthCrcBytes, 0, 4);
+
+            // Data
+            stream.Write(data, 0, data.Length);
+
+            // Data CRC
+            uint dataCrc = Crc32c(data);
+            byte[] dataCrcBytes = BitConverter.GetBytes(dataCrc);
+            stream.Write(dataCrcBytes, 0, 4);
+        }
+
+        private static uint Crc32c(byte[] data)
+        {
+            uint crc = Crc32Algorithm.Compute(data);
+            return ((crc >> 15) | (crc << 17)) + 0xa282ead8;
         }
 
         private static Dictionary<string, int> ParseLabelMap(string labelMapPath)

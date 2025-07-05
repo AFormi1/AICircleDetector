@@ -26,10 +26,11 @@ namespace AICircleDetector.AI
         public static string ValidationTF { get; private set; } = "validation.tfrecord";
 
         public static string TrainingModelFullURL { get; set; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TrainedModel");
+        public static string TrainingModelName { get; set; } = "ObjectDetectionModel";
 
         public static int MaxCircles { get; private set; } = 10;
         public static int MinCircles { get; private set; } = 0;
-        public static Shape ImageShape { get; private set; } = new Shape(28, 28, 1);
+        public static int ImageShape { get; private set; } = 28;
         public static Size ImageSize { get; private set; } = new Size(128, 128);
     }
 }

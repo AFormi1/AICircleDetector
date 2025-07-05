@@ -3,6 +3,7 @@ using AICircleDetector.WPF.Converter;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using OneOf.Types;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -84,16 +85,19 @@ namespace AICircleDetector.WPF.ViewModels
                     imageCount = 200;
                     ImageCount = "200";
                 }
-                await Task.Run(async () => result = await AI.TrainingDataBuilder.CreateTrainingData(imageCount: imageCount));
+                await Task.Run(() =>
+                {
+                    result = AI.TrainingDataBuilder.CreateTrainingData(imageCount: imageCount);
+
+                    if (result)
+                        MessageBox.Show($"Testfiles have been created successfully to\r\n{Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName)}", "Result", MessageBoxButton.OK, MessageBoxImage.Information);
+                    else
+                        MessageBox.Show($"An error occurred while creating the testfiles!", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+
+                    DataButtonEnabled = true;
+                    IsBusyDataCreation = false;
+                });
             }
-
-            if (result)
-                MessageBox.Show($"Testfiles have been created successfully to\r\n{Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName)}", "Result", MessageBoxButton.OK, MessageBoxImage.Information);
-            else
-                MessageBox.Show($"An error occurred while creating the testfiles!", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-
-            DataButtonEnabled = true;
-            IsBusyDataCreation = false;
         }
 
 
@@ -111,6 +115,8 @@ namespace AICircleDetector.WPF.ViewModels
             CancellationTokenSource = new CancellationTokenSource();
             CancelToken = CancellationTokenSource.Token;
 
+            string result = string.Empty;
+
             try
             {
                 OpenFolderDialog folderDialog = new OpenFolderDialog
@@ -125,28 +131,24 @@ namespace AICircleDetector.WPF.ViewModels
 
                     string folderName = folderDialog.FolderName;
 
-                    Stopwatch stopwatch = new Stopwatch();
-                    stopwatch.Start();
+                    await Task.Run(() =>
+                    {
+                        Stopwatch stopwatch = new Stopwatch();
+                        stopwatch.Start();
 
-                    //results.Add(await Task.Run(() => AI.TrainerAndValidator.Train(CancelToken, folderName)));
+                        result = AI.Trainer.Train(folderDialog.FolderName);
 
-                    stopwatch.Stop();
+                        stopwatch.Stop();
 
-                    // Calculate the average loss and accuracy from the results
-                    float res1 = results.Average(result => result.Loss);
-                    float res2 = results.Average(result => result.MAE);
+                        if (result.Contains("completed"))
+                            MessageBox.Show(result, "Training completed", MessageBoxButton.OK, MessageBoxImage.Information);
+                        else
+                            MessageBox.Show(result, "Training failed", MessageBoxButton.OK, MessageBoxImage.Error);
 
-                    EnableConsole();
 
-                    string message = $"Training complete!\nAverage Loss: {res1:F4}\nAverage MAE: {res2:F4}\r\nTime Elapsed: {stopwatch.Elapsed.TotalSeconds} [s]";
-
-                    // Determine whether the overall result is a success or error
-                    bool allSuccessful = results.All(result => result.Success);
-                    string title = allSuccessful ? "Success" : "Error";
-                    MessageBoxImage icon = allSuccessful ? MessageBoxImage.Information : MessageBoxImage.Error;
-
-                    // Show success/error popup with averages
-                    MessageBox.Show(message, title, MessageBoxButton.OK, icon);
+                        DataButtonEnabled = true;
+                        IsBusyDataCreation = false;
+                    });
                 }
                 else
                 {

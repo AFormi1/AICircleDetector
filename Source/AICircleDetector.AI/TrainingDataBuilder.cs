@@ -37,7 +37,7 @@ namespace AICircleDetector.AI
                 Directory.CreateDirectory(_currentImageDir!);
                 Directory.CreateDirectory(_currentAnnotationDir!);
 
-                for (int i = 0; i < imageCount; i++)
+                for (int i = 1; i <= imageCount; i++)
                 {
                     int ringCount = _rand.Next(AIConfig.MinCircles, AIConfig.MaxCircles + 1);
                     string fileName = $"log_{i:D3}.png";
@@ -45,7 +45,7 @@ namespace AICircleDetector.AI
 
                     var circles = GenerateRingImage(imagePath, ringCount);
                     SaveAnnotationXml(_currentAnnotationDir, fileName, circles);
-                }
+                }                      
 
                 CreateTrainValFiles(imageCount, trainListPath, valListPath, ".png", 0.2);
 
@@ -156,21 +156,31 @@ namespace AICircleDetector.AI
             int imageCount,
             string trainListPath,
             string valListPath,
-            string imageExtension = ".png",
-            double valSplit = 0.2)
+            string fileExtension,
+            double valSplit)
         {
-            var allFiles = Enumerable.Range(0, imageCount)
-                                      .Select(i => $"log_{i:D3}")
-                                      .OrderBy(name => name) // Sort alphabetically/logically
-                                      .ToList();
+            var allFilenames = Enumerable.Range(0, imageCount)
+                                          .Select(i => $"log_{i:D3}{fileExtension}")
+                                          .ToList();
 
-            int valCount = (int)(imageCount * valSplit);
-            var valFiles = allFiles.Take(valCount).ToList();
-            var trainFiles = allFiles.Skip(valCount).ToList();
+            // Sort numerically ascending
+            allFilenames.Sort((a, b) =>
+            {
+                int aNum = int.Parse(Path.GetFileNameWithoutExtension(a).Split('_')[1]);
+                int bNum = int.Parse(Path.GetFileNameWithoutExtension(b).Split('_')[1]);
+                return aNum.CompareTo(bNum);
+            });
+
+            int valStartIndex = (int)(imageCount * (1 - valSplit));
+
+            var trainFiles = allFilenames.Take(valStartIndex).ToList();
+            var valFiles = allFilenames.Skip(valStartIndex).ToList();
+            var trainValFiles = allFilenames; // full list
 
             File.WriteAllLines(trainListPath, trainFiles);
             File.WriteAllLines(valListPath, valFiles);
         }
+
 
 
 

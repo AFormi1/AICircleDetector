@@ -14,6 +14,7 @@ using System.Threading;
 using System.Linq;
 using Tensorflow.Keras.Losses;
 using Tensorflow.Util;
+using Tensorflow.Data;
 
 namespace AICircleDetector.AI
 {
@@ -36,12 +37,13 @@ namespace AICircleDetector.AI
                 IModel model;
                 if (Directory.Exists(modelPath) && Directory.GetDirectories(modelPath).Length > 0)
                 {
-                    model = keras.models.load_model(AIConfig.TrainingModelFullURL);
+                    model = keras.models.load_model(modelPath);
                 }
                 else
                 {
                     Tensor input = keras.Input(shape: (AIConfig.ImageShape, AIConfig.ImageShape, 1));
 
+                    // Feature extraction
                     var x = keras.layers.Conv2D(32, 3, activation: keras.activations.Relu).Apply(input);
                     x = keras.layers.MaxPooling2D().Apply(x);
                     x = keras.layers.Conv2D(64, 3, activation: keras.activations.Relu).Apply(x);
@@ -49,57 +51,89 @@ namespace AICircleDetector.AI
                     x = keras.layers.Flatten().Apply(x);
                     x = keras.layers.Dense(128, activation: keras.activations.Relu).Apply(x);
 
+                    // Outputs
                     var bbox_output = keras.layers.Dense(AIConfig.MaxCircles * 4, activation: keras.activations.Sigmoid).Apply(x);
                     bbox_output = keras.layers.Reshape((AIConfig.MaxCircles, 4)).Apply(bbox_output);
 
-                    model = keras.Model(input, bbox_output);
+                    var count_output = keras.layers.Dense(1, activation: keras.activations.Sigmoid).Apply(x);
+
+                    var outputs = new Tensors(bbox_output, count_output);
+
+                    model = keras.Model(input, outputs);
                 }
 
                 model.summary();
 
+                // Use your combined loss class here
+                var combinedLoss = new CombinedLoss();
+
                 model.compile(
                     optimizer: keras.optimizers.Adam(),
-                    loss: keras.losses.MeanSquaredError(),
+                    loss: combinedLoss,
                     metrics: new[] { "mean_absolute_error" }
                 );
 
+                // Load data
                 List<Example> trainData = LoadTFRecord(trainTfPath);
                 List<Example> validationData = LoadTFRecord(validationTfPath);
 
-                NDArray xTrain, bboxTrain, xValidate, bboxValidate;
-                Create_ND_array(trainData, out xTrain, out bboxTrain);
-                Create_ND_array(validationData, out xValidate, out bboxValidate);
+                NDArray xTrain, bboxTrain, countTrain;
+                NDArray xValidate, bboxValidate, countValidate;
 
-                ValidationDataPack validationPack = new ValidationDataPack((xValidate, bboxValidate));
+                Create_ND_array(trainData, out xTrain, out bboxTrain, out countTrain);
+                Create_ND_array(validationData, out xValidate, out bboxValidate, out countValidate);
 
-
-                string xt = $"xTrain shape: {xTrain.shape}, dtype: {xTrain.dtype}"; //expected format like: "xTrain shape: (737, 28, 28, 1), dtype: TF_FLOAT"
-                string bt = $"bboxTrain shape: {bboxTrain.shape}, dtype: {bboxTrain.dtype}"; //expected format like: "bboxTrain shape: (454, 10, 4), dtype: TF_FLOAT"
-
-                if (xTrain == null || bboxTrain == null)
+                if (
+                    xTrain == null || bboxTrain == null || countTrain == null ||
+                    xValidate == null || bboxValidate == null || countValidate == null
+                )
                     return $"Training failed:\r\nOne of the required NDArrays is null";
 
+                // 1. Flatten bbox to match model output
+                var flatBBoxTrain = tf.constant(bboxTrain.reshape(new Shape(bboxTrain.shape[0], -1))); // [batch, maxCircles*4]
+                var countTrainT = tf.constant(countTrain); // [batch, 1] or [batch]
 
+                // 2. Create individual datasets
+                var dsX = new TensorSliceDataset(tf.constant(xTrain));           // input
+                var dsBBox = new TensorSliceDataset(flatBBoxTrain);              // output 1
+                var dsCount = new TensorSliceDataset(countTrainT);               // output 2
+
+                // 3. Combine (bbox, count) -> label tuple
+                var dsLabel = tf.data.Dataset.zip(dsBBox, dsCount);              // (bbox, count)
+
+                // 4. Combine (input, label)
+                var trainDataset = tf.data.Dataset.zip(dsX, dsLabel)             // ((x), (bbox, count))
+                    .shuffle(1000)
+                    .batch(batchSize);
+
+
+                var flatBBoxVal = tf.constant(bboxValidate.reshape(new Shape(bboxValidate.shape[0], -1)));
+                var countValT = tf.constant(countValidate);
+
+                var dsXVal = new TensorSliceDataset(tf.constant(xValidate));
+                var dsBBoxVal = new TensorSliceDataset(flatBBoxVal);
+                var dsCountVal = new TensorSliceDataset(countValT);
+
+                var dsLabelVal = tf.data.Dataset.zip(dsBBoxVal, dsCountVal);
+                var validationDataset = tf.data.Dataset.zip(dsXVal, dsLabelVal)
+                    .batch(batchSize);
+
+
+                // Train the model
                 ICallback history = model.fit(
-                    xTrain, bboxTrain,
-                    batch_size: batchSize,
+                    trainDataset,
                     epochs: epochs,
-                    validation_data: validationPack,
+                    validation_data: validationDataset,
                     shuffle: true,
-                    use_multiprocessing: true,
-                    workers: Environment.ProcessorCount,
                     verbose: 1
                 );
 
-                // Save   
-                AIConfig.TrainingModelFullURL = AIConfig.TrainingModelFullURL;
+                // Save model
                 model.save(modelPath);
 
-
-                //Report
+                // Extract metrics from history (adjust keys if needed)
                 float loss = history.history["loss"].Last();
                 float val_loss = history.history["val_loss"].Last();
-
                 float mae = history.history["mean_absolute_error"].Last();
                 float val_mae = history.history["val_mean_absolute_error"].Last();
 
@@ -109,7 +143,6 @@ namespace AICircleDetector.AI
                     $"Training MAE: {mae:F4}\n" +
                     $"Validation Loss: {val_loss:F4}\n" +
                     $"Validation MAE: {val_mae:F4}";
-
             }
             catch (Exception ex)
             {
@@ -122,25 +155,32 @@ namespace AICircleDetector.AI
 
 
 
-        private static void Create_ND_array(List<Example> trainData, out NDArray xTrain, out NDArray bboxTrain)
+
+
+
+
+        private static void Create_ND_array(List<Example> trainData, out NDArray xTrain, out NDArray bboxTrain, out NDArray countTrain)
         {
             xTrain = null;
             bboxTrain = null;
+            countTrain = null;
 
             try
             {
-                int imageChannels = 1; // z.B. Graustufen
+                int imageChannels = 1; // Grayscale
                 int imageSize = AIConfig.ImageShape * AIConfig.ImageShape;
-                int maxBoxes = AIConfig.MaxCircles; // z.B. 10 Boundingboxes pro Bild
+                int maxBoxes = AIConfig.MaxCircles; // max boxes per image
 
                 var images = new List<float[]>();
                 var allBBoxes = new List<float[,]>();
+                var counts = new List<float>(); // for circle counts
 
                 foreach (var example in trainData)
                 {
                     var featureMap = example.Features?.feature;
                     if (featureMap == null ||
                         !featureMap.TryGetValue("image/encoded", out var imageFeature) ||
+                        !featureMap.TryGetValue("image/circle_count", out var countFeature) ||
                         !featureMap.TryGetValue("image/object/bbox/xmin", out var xminFeature) ||
                         !featureMap.TryGetValue("image/object/bbox/ymin", out var yminFeature) ||
                         !featureMap.TryGetValue("image/object/bbox/xmax", out var xmaxFeature) ||
@@ -163,12 +203,16 @@ namespace AICircleDetector.AI
                     if (boxCount == 0 || ymins.Length != boxCount || xmaxs.Length != boxCount || ymaxs.Length != boxCount)
                         continue;
 
-                    // Bild in Bitmap laden und auf AIConfig.ImageShape skalieren
+                    // Extract circle count value as float
+                    var countValue = countFeature.FloatList?.Values?.FirstOrDefault() ?? 0f;
+                    counts.Add(countValue);
+
+                    // Load and resize image to AIConfig.ImageShape x AIConfig.ImageShape
                     using var ms = new MemoryStream(imageBytes);
                     using var bmp = new Bitmap(ms);
                     using var resized = new Bitmap(bmp, new Size(AIConfig.ImageShape, AIConfig.ImageShape));
 
-                    // Bild in float array (Graustufen 0..1) konvertieren
+                    // Convert to grayscale float array [0..1]
                     float[] imageFloats = new float[imageSize];
                     for (int y = 0; y < AIConfig.ImageShape; y++)
                     {
@@ -182,7 +226,7 @@ namespace AICircleDetector.AI
 
                     images.Add(imageFloats);
 
-                    // Boundingboxes in gepolstertes Array packen (maxBoxes x 4)
+                    // Pack bounding boxes into padded array maxBoxes x 4
                     float[,] bboxes = new float[maxBoxes, 4];
                     int usableCount = Math.Min(boxCount, maxBoxes);
 
@@ -203,8 +247,9 @@ namespace AICircleDetector.AI
                 int sampleCount = images.Count;
                 var reshapedImages = new float[sampleCount, AIConfig.ImageShape, AIConfig.ImageShape, imageChannels];
                 var bboxArray = new float[sampleCount, maxBoxes, 4];
+                var countArray = new float[sampleCount];
 
-                // 1D Bildarrays in 4D Array (Samples, H, W, C) umwandeln
+                // Convert 1D images to 4D array & copy bboxes and counts
                 for (int i = 0; i < sampleCount; i++)
                 {
                     for (int row = 0; row < AIConfig.ImageShape; row++)
@@ -215,7 +260,6 @@ namespace AICircleDetector.AI
                         }
                     }
 
-                    // Boundingboxes übertragen
                     for (int b = 0; b < maxBoxes; b++)
                     {
                         for (int k = 0; k < 4; k++)
@@ -223,17 +267,23 @@ namespace AICircleDetector.AI
                             bboxArray[i, b, k] = allBBoxes[i][b, k];
                         }
                     }
+
+                    countArray[i] = counts[i];
                 }
 
                 xTrain = np.array(reshapedImages);
                 bboxTrain = np.array(bboxArray);
+                countTrain = np.array(countArray);    
+                
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Create_ND_array] Error: {ex.Message}");
                 xTrain = null;
                 bboxTrain = null;
+                countTrain = null;
             }
+
         }
 
 

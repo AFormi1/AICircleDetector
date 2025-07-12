@@ -21,7 +21,9 @@ namespace AICircleDetector.AI
         public static string AnnotationsFolderName { get; private set; } = "annotations";
         public static string LabelMapName { get; private set; } = "label_map.pbtxt";
         public static string TrainListName { get; private set; } = "training.txt";
+        public static string ValidateListName { get; private set; } = "validate.txt";
         public static string TrainingTF { get; private set; } = "training.tfrecord";
+        public static string ValidateTF { get; private set; } = "validate.tfrecord";
 
         public static string TrainingModelFullURL { get; set; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TrainedModel");
         public static string TrainingModelName { get; set; } = "ObjectDetectionModel";

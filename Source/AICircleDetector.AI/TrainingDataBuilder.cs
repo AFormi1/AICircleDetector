@@ -15,12 +15,11 @@ namespace AICircleDetector.AI
     {
         private static readonly Random _rand = new();
 
-        public static bool CreateTrainingData(int imageCount)
+        public static bool CreateTrainingData(int imageCount, float validationSplit = 0.2f)
         {
             try
             {
                 string _currentGUID = Guid.NewGuid().ToString();
-
                 Console.WriteLine($"CreateTrainingData {_currentGUID} has started, please wait ...");
 
                 string _currentSessionDir = Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName, _currentGUID);
@@ -30,9 +29,10 @@ namespace AICircleDetector.AI
                 string labelMapPath = Path.Combine(_currentSessionDir, AIConfig.LabelMapName);
 
                 string trainListPath = Path.Combine(_currentSessionDir, AIConfig.TrainListName);
-
                 string trainTfPath = Path.Combine(_currentSessionDir, AIConfig.TrainingTF);
 
+                string validationListPath = Path.Combine(_currentSessionDir, AIConfig.ValidateListName);
+                string validationTfPath = Path.Combine(_currentSessionDir, AIConfig.ValidateTF);
 
                 Directory.CreateDirectory(_currentImageDir!);
                 Directory.CreateDirectory(_currentAnnotationDir!);
@@ -45,24 +45,40 @@ namespace AICircleDetector.AI
 
                     var circles = GenerateRingImage(imagePath, ringCount);
                     SaveAnnotationXml(_currentAnnotationDir, fileName, circles);
-                }                      
+                }
 
-                CreateTrainValFiles(imageCount, trainListPath, ".png");
+                // Build train/val split
+                var allFilenames = Enumerable.Range(0, imageCount)
+                                             .Select(i => $"log_{i:D3}.png")
+                                             .ToList();
+
+                // Shuffle before split
+                allFilenames = allFilenames.OrderBy(_ => _rand.Next()).ToList();
+
+                int valCount = (int)(imageCount * validationSplit);
+                var validationFiles = allFilenames.Take(valCount).ToList();
+                var trainFiles = allFilenames.Skip(valCount).ToList();
+
+                File.WriteAllLines(trainListPath, trainFiles);
+                File.WriteAllLines(validationListPath, validationFiles);
 
                 CreateLabelMap(labelMapPath!);
                 var classMap = ParseLabelMap(labelMapPath);
 
+                // TFRecords for train and validation
                 CreateSerializedTFRecord(trainListPath, _currentImageDir, _currentAnnotationDir, classMap, trainTfPath);
+                CreateSerializedTFRecord(validationListPath, _currentImageDir, _currentAnnotationDir, classMap, validationTfPath);
 
                 Console.WriteLine($"CreateTrainingData {_currentGUID} finished!");
-
                 return true;
             }
             catch (Exception ex)
             {
+                Console.WriteLine("ERROR: " + ex.Message);
                 return false;
             }
         }
+
 
         public static void CreateSerializedTFRecord(
             string listFilePath,
@@ -86,13 +102,16 @@ namespace AICircleDetector.AI
                     continue;
 
                 var imageBytes = File.ReadAllBytes(imagePath);
+
                 var (xmins, xmaxs, ymins, ymaxs, labelsText, labelsIdx) = TfFeatureHelper.ParseAnnotation(annotationPath, labelMap);
+                int circleCount = labelsText.Count;
 
                 var features = new Features
                 {
                     feature = new Dictionary<string, Feature>
                     {
                         ["image/encoded"] = TfFeatureHelper.Bytes(imageBytes),
+                        ["image/circle_count"] = TfFeatureHelper.Int64(circleCount),
                         ["image/object/bbox/xmin"] = TfFeatureHelper.FloatList(xmins),
                         ["image/object/bbox/xmax"] = TfFeatureHelper.FloatList(xmaxs),
                         ["image/object/bbox/ymin"] = TfFeatureHelper.FloatList(ymins),

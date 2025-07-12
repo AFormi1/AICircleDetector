@@ -13,6 +13,7 @@ using System.Threading.Channels;
 using System.Threading;
 using System.Linq;
 using Tensorflow.Keras.Losses;
+using Tensorflow.Util;
 
 namespace AICircleDetector.AI
 {
@@ -29,6 +30,7 @@ namespace AICircleDetector.AI
                 // Paths
                 string modelPath = AIConfig.TrainingModelFullURL;
                 string trainTfPath = Path.Combine(basepath, AIConfig.TrainingTF);
+                string validationTfPath = Path.Combine(basepath, AIConfig.ValidateTF);
 
                 // Build and compile model
                 IModel model;
@@ -62,9 +64,13 @@ namespace AICircleDetector.AI
                 );
 
                 List<Example> trainData = LoadTFRecord(trainTfPath);
+                List<Example> validationData = LoadTFRecord(validationTfPath);
 
-                NDArray xTrain, bboxTrain;
+                NDArray xTrain, bboxTrain, xValidate, bboxValidate;
                 Create_ND_array(trainData, out xTrain, out bboxTrain);
+                Create_ND_array(validationData, out xValidate, out bboxValidate);
+
+                ValidationDataPack validationPack = new ValidationDataPack((xValidate, bboxValidate));
 
 
                 string xt = $"xTrain shape: {xTrain.shape}, dtype: {xTrain.dtype}"; //expected format like: "xTrain shape: (737, 28, 28, 1), dtype: TF_FLOAT"
@@ -78,7 +84,7 @@ namespace AICircleDetector.AI
                     xTrain, bboxTrain,
                     batch_size: batchSize,
                     epochs: epochs,
-                    validation_split: 0.2f,
+                    validation_data: validationPack,
                     shuffle: true,
                     use_multiprocessing: true,
                     workers: Environment.ProcessorCount,

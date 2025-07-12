@@ -51,21 +51,22 @@ namespace AICircleDetector.AI
                     x = keras.layers.Flatten().Apply(x);
                     x = keras.layers.Dense(128, activation: keras.activations.Relu).Apply(x);
 
-                    // Outputs
+                    // Outputs flattened bbox and count concatenated as one vector
+                    // bbox: maxCircles * 4
+                    // count: 1 scalar
                     var bbox_output = keras.layers.Dense(AIConfig.MaxCircles * 4, activation: keras.activations.Sigmoid).Apply(x);
-                    bbox_output = keras.layers.Reshape((AIConfig.MaxCircles, 4)).Apply(bbox_output);
-
                     var count_output = keras.layers.Dense(1, activation: keras.activations.Sigmoid).Apply(x);
 
-                    var outputs = new Tensors(bbox_output, count_output);
+                    // Concatenate bbox and count into one tensor
+                    var output = keras.layers.Concatenate().Apply(new Tensors(bbox_output, count_output));
 
-                    model = keras.Model(input, outputs);
+                    model = keras.Model(input, output);
                 }
 
                 model.summary();
 
-                // Use your combined loss class here
-                var combinedLoss = new CombinedLoss();
+                // Use your combined loss class here, or define a custom loss that can handle concatenated output
+                var combinedLoss = new CombinedLoss();  // You need to update this to expect combined tensor
 
                 model.compile(
                     optimizer: keras.optimizers.Adam(),
@@ -89,35 +90,28 @@ namespace AICircleDetector.AI
                 )
                     return $"Training failed:\r\nOne of the required NDArrays is null";
 
-                // 1. Flatten bbox to match model output
-                var flatBBoxTrain = tf.constant(bboxTrain.reshape(new Shape(bboxTrain.shape[0], -1))); // [batch, maxCircles*4]
-                var countTrainT = tf.constant(countTrain); // [batch, 1] or [batch]
+                // Flatten bbox to 2D shape [batch, maxCircles * 4]
+                var flatBBoxTrain = bboxTrain.reshape(new Shape(bboxTrain.shape[0], -1));
+                var flatBBoxVal = bboxValidate.reshape(new Shape(bboxValidate.shape[0], -1));
 
-                // 2. Create individual datasets
-                var dsX = new TensorSliceDataset(tf.constant(xTrain));           // input
-                var dsBBox = new TensorSliceDataset(flatBBoxTrain);              // output 1
-                var dsCount = new TensorSliceDataset(countTrainT);               // output 2
+                // Combine bbox and count for train and validation labels
+                var yTrain = np.concatenate(new NDArray[] {
+                                        flatBBoxTrain,
+                                        countTrain.reshape(new Shape(countTrain.shape[0], 1))  // Ensure count has shape [batch, 1]
+                                    }, axis: 1);
 
-                // 3. Combine (bbox, count) -> label tuple
-                var dsLabel = tf.data.Dataset.zip(dsBBox, dsCount);              // (bbox, count)
+                var yValidate = np.concatenate(new NDArray[] {
+                                        flatBBoxVal,
+                                        countValidate.reshape(new Shape(countValidate.shape[0], 1))
+                                    }, axis: 1);
 
-                // 4. Combine (input, label)
-                var trainDataset = tf.data.Dataset.zip(dsX, dsLabel)             // ((x), (bbox, count))
+                // Create TensorSliceDatasets for inputs and combined labels
+                var trainDataset = new TensorSliceDataset(tf.constant(xTrain), tf.constant(yTrain))
                     .shuffle(1000)
                     .batch(batchSize);
 
-
-                var flatBBoxVal = tf.constant(bboxValidate.reshape(new Shape(bboxValidate.shape[0], -1)));
-                var countValT = tf.constant(countValidate);
-
-                var dsXVal = new TensorSliceDataset(tf.constant(xValidate));
-                var dsBBoxVal = new TensorSliceDataset(flatBBoxVal);
-                var dsCountVal = new TensorSliceDataset(countValT);
-
-                var dsLabelVal = tf.data.Dataset.zip(dsBBoxVal, dsCountVal);
-                var validationDataset = tf.data.Dataset.zip(dsXVal, dsLabelVal)
+                var validationDataset = new TensorSliceDataset(tf.constant(xValidate), tf.constant(yValidate))
                     .batch(batchSize);
-
 
                 // Train the model
                 ICallback history = model.fit(
@@ -149,12 +143,6 @@ namespace AICircleDetector.AI
                 return $"Training failed:\r\n{ex}";
             }
         }
-
-
-
-
-
-
 
 
 

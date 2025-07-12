@@ -12,71 +12,54 @@ namespace AICircleDetector.AI
         {
             try
             {
-                if (!Path.Exists(AIConfig.TrainingModelFullURL))
+                if (!Directory.Exists(AIConfig.TrainingModelFullURL))
                 {
-                    string msg = "Predictor: Did not set the path to the Trained Model - please run Training and Validate Before!";
-                    return msg;
+                    return "Predictor: Model path not set or model not trained yet.";
                 }
 
+                int maxCircles = AIConfig.MaxCircles;
 
-                Console.WriteLine("Predictor: loading image...");
                 NDArray inputTensor = LoadImage(imagePath, AIConfig.ImageShape);
-
-                Console.WriteLine($"Input shape: {inputTensor.shape}, dtype: {inputTensor.dtype}");
-
-                Console.WriteLine("Predictor: loading model...");
 
                 var model = keras.models.load_model(AIConfig.TrainingModelFullURL);
 
-                model.summary();
+                Tensors output = model.predict(inputTensor);
 
-                model.compile(
-                    optimizer: keras.optimizers.Adam(learning_rate: 0.001f),
-                    loss: keras.losses.MeanSquaredError(),
-                    metrics: new[] { "mean_absolute_error" });
+                var predictions = output.numpy();
+                var batchPredictions = predictions[0]; // Erstes (und einziges) Batch
 
+                float predCountRaw = batchPredictions[batchPredictions.size - 1];
 
-                Console.WriteLine("Predictor: running prediction...");
-
-                Tensors output = model.predict(
-                    inputTensor,
-                    use_multiprocessing: true,
-                    workers: Environment.ProcessorCount,
-                    max_queue_size: 32);
+                int circleCount = (int)Math.Round(predCountRaw * maxCircles);
 
 
-                NDArray predictions = output.numpy();
+                // Get bounding box values: first maxCircles * 4 entries
+                var bboxFlat = batchPredictions[$"0:{maxCircles * 4}"]; // Slice string
+                var boxes = bboxFlat.reshape(new Shape(maxCircles, 4));            // Shape: (maxCircles, 4)
 
-                int numBoxes = (int)predictions.shape.dims[1];
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"Predicted Circle Count (scaled): {circleCount}");
+                sb.AppendLine("Bounding Boxes:");
 
-                int detectedBoxes = 0;
-
-                for (int i = 0; i < numBoxes; i++)
+                for (int i = 0; i < maxCircles; i++)
                 {
-                    float xMin = (float)predictions[0, i, 0];
-                    float yMin = (float)predictions[0, i, 1];
-                    float xMax = (float)predictions[0, i, 2];
-                    float yMax = (float)predictions[0, i, 3];
+                    float xMin = (float)boxes[i][0];
+                    float yMin = (float)boxes[i][1];
+                    float xMax = (float)boxes[i][2];
+                    float yMax = (float)boxes[i][3];
 
-                    //make some checks to eliminate possible trash
-                    if ((xMax - xMin) < 0.01f && (yMax - yMin) < 0.01f) continue;
-
-                    float area = (xMax - xMin) * (yMax - yMin);
-                    if (area < 0.001f) continue;
-
-                    detectedBoxes++;
-
+                    sb.AppendLine($"Box {i + 1}: [{xMin:F6}, {yMin:F6}, {xMax:F6}, {yMax:F6}]");
                 }
 
-                return $"Prediction completed:\r\nNumber of detected BoundingBoxes (Circles): {detectedBoxes}";
-
+                return sb.ToString();
             }
             catch (Exception ex)
             {
                 return $"Prediction failed:\r\n{ex}";
             }
-
         }
+
+
 
         private static NDArray LoadImage(string path, int size = 28)
         {

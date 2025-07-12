@@ -111,16 +111,16 @@ namespace AICircleDetector.AI
                     .batch(batchSize);
 
                 var validationDataset = new TensorSliceDataset(tf.constant(xValidate), tf.constant(yValidate))
-                    .batch(batchSize);
+                    .batch(batchSize);                            
 
                 // Train the model
                 ICallback history = model.fit(
-                    trainDataset,
-                    epochs: epochs,
-                    validation_data: validationDataset,
-                    shuffle: true,
-                    verbose: 1
-                );
+                     trainDataset,
+                     epochs: epochs,
+                     validation_data: validationDataset,
+                     shuffle: true,
+                     verbose: 1
+                 );
 
                 // Save model
                 model.save(modelPath);
@@ -187,12 +187,8 @@ namespace AICircleDetector.AI
                     if (xmins == null || ymins == null || xmaxs == null || ymaxs == null)
                         continue;
 
-                    int boxCount = xmins.Length;
-                    if (boxCount == 0 || ymins.Length != boxCount || xmaxs.Length != boxCount || ymaxs.Length != boxCount)
-                        continue;
-
                     // Extract circle count value as float
-                    var countValue = countFeature.FloatList?.Values?.FirstOrDefault() ?? 0f;
+                    long countValue = countFeature.Int64List?.Values?.FirstOrDefault() ?? 0;
                     counts.Add(countValue);
 
                     // Load and resize image to AIConfig.ImageShape x AIConfig.ImageShape
@@ -216,9 +212,8 @@ namespace AICircleDetector.AI
 
                     // Pack bounding boxes into padded array maxBoxes x 4
                     float[,] bboxes = new float[maxBoxes, 4];
-                    int usableCount = Math.Min(boxCount, maxBoxes);
 
-                    for (int i = 0; i < usableCount; i++)
+                    for (int i = 0; i < countValue; i++)
                     {
                         bboxes[i, 0] = xmins[i];
                         bboxes[i, 1] = ymins[i];
@@ -261,8 +256,8 @@ namespace AICircleDetector.AI
 
                 xTrain = np.array(reshapedImages);
                 bboxTrain = np.array(bboxArray);
-                countTrain = np.array(countArray);    
-                
+                countTrain = np.array(countArray);
+
             }
             catch (Exception ex)
             {

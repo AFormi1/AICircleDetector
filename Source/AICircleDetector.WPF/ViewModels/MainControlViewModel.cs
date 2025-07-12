@@ -49,6 +49,7 @@ namespace AICircleDetector.WPF.ViewModels
         private string consoleText = string.Empty;
 
 
+
         public MainControlViewModel()
         {
             ConsoleBindingWriter writer = new ConsoleBindingWriter(AppendConsoleLine);

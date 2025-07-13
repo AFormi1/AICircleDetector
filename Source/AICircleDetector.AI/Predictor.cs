@@ -48,8 +48,9 @@ namespace AICircleDetector.AI
                 NDArray predictions = output.numpy();
 
                 int numBoxes = (int)predictions.shape.dims[1];
-
                 int detectedBoxes = 0;
+
+                string bb = "i:  [ xMin ] [ xMax ] [ yMin ] [ yMax ]" + Environment.NewLine;
 
                 for (int i = 0; i < numBoxes; i++)
                 {
@@ -58,17 +59,45 @@ namespace AICircleDetector.AI
                     float xMax = (float)predictions[0, i, 2];
                     float yMax = (float)predictions[0, i, 3];
 
-                    //make some checks to eliminate possible trash
-                    if ((xMax - xMin) < 0.01f && (yMax - yMin) < 0.01f) continue;
+                    bb += $"{i}: [{xMin:F4}] [{xMax:F4}] [{yMin:F4}] [{yMax:F4}]";
 
-                    float area = (xMax - xMin) * (yMax - yMin);
-                    if (area < 0.001f) continue;
+                    float width = xMax - xMin;
+                    float height = yMax - yMin;
+                    float ratio = width / height;
+                    float area = width * height;
+
+                    // Check coordinate validity
+                    if (xMin < 0f || yMin < 0f || xMax > 1f || yMax > 1f)
+                    {
+                        bb += " --> " + "< 0 || > 1" + Environment.NewLine;
+                        continue;
+                    }
+                    if (xMin >= xMax || yMin >= yMax)
+                    {
+                        bb += " --> " + "Min > Max" + Environment.NewLine;
+                        continue;
+                    }
+
+                    // Filter out images, with are not sqared (+- 10%)
+                    if (ratio < 0.9f || ratio > 1.1f)
+                    {
+                        bb += " --> " + "Ratio" + Environment.NewLine;
+                        continue;
+                    }
+
+                    if (area < 0.005f)
+                    {
+                        bb += " --> " + "Area" + Environment.NewLine;
+                        continue;
+                    }
 
                     detectedBoxes++;
 
+                    bb += " --> " + "OK" + Environment.NewLine;
+
                 }
 
-                return $"Prediction completed:\r\nNumber of detected BoundingBoxes (Circles): {detectedBoxes}";
+                return $"Prediction completed:\r\nNumber of detected Circles: {detectedBoxes}\r\nBoundingBoxes:\r\n{bb}";                             
 
             }
             catch (Exception ex)

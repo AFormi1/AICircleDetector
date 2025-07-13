@@ -11,6 +11,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Media.Media3D;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 
 namespace AICircleDetector.WPF.ViewModels
@@ -19,8 +21,9 @@ namespace AICircleDetector.WPF.ViewModels
     public partial class MainControlViewModel : BaseViewModel
     {
 
-        private Canvas CanvasFromUI; 
-        private Image ImageFromUI; 
+        private Canvas CanvasFromUI;
+        private Image ImageFromUI;
+        private List<Circle> PredictedCircles;
 
         private int TrainingSetsCount = 1;
 
@@ -54,15 +57,15 @@ namespace AICircleDetector.WPF.ViewModels
         private string consoleText = string.Empty;
 
 
-      
+
 
         public MainControlViewModel()
-        { 
+        {
             ConsoleBindingWriter writer = new ConsoleBindingWriter(AppendConsoleLine);
             Console.SetOut(writer);
         }
 
-   
+
         private void AppendConsoleLine(string line)
         {
             // Run on UI thread if necessary
@@ -98,7 +101,7 @@ namespace AICircleDetector.WPF.ViewModels
                     string msg = "";
                     if (result)
                     {
-                        msg = $"Testfiles have been created successfully to\r\n{Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName)}";
+                        msg = $"Testfiles have been created successfully to\r\n{System.IO.Path.Combine(Environment.CurrentDirectory, AIConfig.TrainingFolderName)}";
                         MessageBox.Show(msg, "Result", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
                     else
@@ -195,7 +198,7 @@ namespace AICircleDetector.WPF.ViewModels
                 Console.SetOut(TextWriter.Null);
             }
         }
-               
+
 
 
         [RelayCommand]
@@ -213,6 +216,8 @@ namespace AICircleDetector.WPF.ViewModels
                 ImageToDisplay = new BitmapImage(new Uri(filePath));
 
                 imageURL = openFileDialog.FileName;
+
+                PredictedCircles = null;
 
                 // Delay CanvasOverlay until UI finishes rendering
                 Application.Current.Dispatcher.BeginInvoke(new Action(() =>
@@ -244,35 +249,36 @@ namespace AICircleDetector.WPF.ViewModels
                     Stopwatch stopwatch = new Stopwatch();
                     stopwatch.Start();
 
-                    string result = string.Empty;
+                    PredictionResult result;
 
                     result = AI.Predictor.Predict(imageURL);
 
                     stopwatch.Stop();
 
-                    result += $"\r\nPrediction took {stopwatch.Elapsed.TotalMilliseconds:F0} ms";
+                    result.Result += $"\r\nPrediction took {stopwatch.Elapsed.TotalMilliseconds:F0} ms";
 
-                    if (result.Contains("completed"))
-                        MessageBox.Show(result, "Prediction finished", MessageBoxButton.OK, MessageBoxImage.Information);
+                    if (result.Result.Contains("completed"))
+                        MessageBox.Show(result.Result, "Prediction finished", MessageBoxButton.OK, MessageBoxImage.Information);
                     else
-                        MessageBox.Show(result, "Prediction failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show(result.Result, "Prediction failed", MessageBoxButton.OK, MessageBoxImage.Error);
 
                     Console.WriteLine(result);
 
                     DataButtonEnabled = true;
                     IsBusyDataCreation = false;
 
+                    //Draw the circles on the canvas
+                    PredictedCircles = result.Circles;
+
+                    // Delay CanvasOverlay until UI finishes rendering
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        CanvasOverlay();
+
+                    }), DispatcherPriority.Loaded);
+
                 });
 
-
-                // RUN: Training on background thread
-                //AI.AIResult result = await Task.Run(() => AI.Predictor.Predict(imageURL));
-
-                // RESULT: Show success/error popup
-                //MessageBox.Show(result.Message,
-                //    result.Success ? "Success" : "Error",
-                //    MessageBoxButton.OK,
-                //    result.Success ? MessageBoxImage.Information : MessageBoxImage.Error);
             }
 
             catch (Exception ex)
@@ -303,7 +309,7 @@ namespace AICircleDetector.WPF.ViewModels
         {
             if (CanvasFromUI == null || ImageFromUI == null || ImageToDisplay == null) return;
 
-            CanvasFromUI.Children.Clear();                 
+            CanvasFromUI.Children.Clear();
 
             double width = ImageFromUI.ActualWidth;
             double height = ImageFromUI.ActualHeight;
@@ -365,7 +371,69 @@ namespace AICircleDetector.WPF.ViewModels
                 Canvas.SetTop(hLabel, fraction * height);
                 CanvasFromUI.Children.Add(hLabel);
             }
+
+            if (PredictedCircles != null)
+            {
+                for (int i = 0; i < PredictedCircles.Count; i++)
+                {
+                    var circle = PredictedCircles[i];
+
+                    // Skip invalid bounds
+                    if (circle.XMin < 0 || circle.YMin < 0 ||
+                        circle.XMax > 1 || circle.YMax > 1 ||
+                        circle.XMin >= circle.XMax || circle.YMin >= circle.YMax)
+                    {
+                        continue;
+                    }
+
+                    double xMin = circle.XMin * width;
+                    double yMin = circle.YMin * height;
+                    double xMax = circle.XMax * width;
+                    double yMax = circle.YMax * height;
+
+                    double centerX = (xMin + xMax) / 2;
+                    double centerY = (yMin + yMax) / 2;
+                    double radiusX = (xMax - xMin) / 2;
+                    double radiusY = (yMax - yMin) / 2;
+                               
+
+                    // Draw ellipse
+                    var ellipse = new Ellipse
+                    {
+                        Width = radiusX * 2,
+                        Height = radiusY * 2,
+                        Stroke = Brushes.Red,
+                        StrokeThickness = 2,
+                        Fill = Brushes.Transparent
+                    };
+
+                    Canvas.SetLeft(ellipse, centerX - radiusX);
+                    Canvas.SetTop(ellipse, centerY - radiusY);
+                    CanvasFromUI.Children.Add(ellipse);
+
+                    // Draw index label at the center of the ellipse
+                    var label = new TextBlock
+                    {   
+                        Text = $"[{circle.XMin:F3}|{circle.XMax:F3}|{circle.YMin:F3}|{circle.YMax:F3}]",
+                        Foreground = Brushes.Red,
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 12,
+                        TextAlignment = TextAlignment.Center
+                    };
+
+                    // Measure the label size (optional for better centering)
+                    label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                    Size labelSize = label.DesiredSize;
+
+                    Canvas.SetLeft(label, centerX - labelSize.Width / 2);
+                    Canvas.SetTop(label, centerY - labelSize.Height / 2);
+                    CanvasFromUI.Children.Add(label);
+                }
+            }
+
+
         }
+
 
         public void SetUpCanvas(Canvas canvas, Image image)
         {

@@ -3,19 +3,22 @@ using static Tensorflow.Binding;
 using static Tensorflow.KerasApi;
 using Tensorflow;
 using System.Drawing;
+using Microsoft.VisualBasic;
 
 namespace AICircleDetector.AI
 {
     public static class Predictor
     {
-        public static string Predict(string imagePath)
+        public static PredictionResult Predict(string imagePath)
         {
+            string msg = string.Empty;
+
             try
             {
                 if (!Path.Exists(AIConfig.TrainingModelFullURL))
                 {
-                    string msg = "Predictor: Did not set the path to the Trained Model - please run Training and Validate Before!";
-                    return msg;
+                    msg = "Predictor: Did not set the path to the Trained Model - please run Training and Validate Before!";
+                    return new PredictionResult() { Result = msg };
                 }
 
 
@@ -47,6 +50,8 @@ namespace AICircleDetector.AI
 
                 NDArray predictions = output.numpy();
 
+                List<Circle> circles = new();
+
                 int numBoxes = (int)predictions.shape.dims[1];
                 int detectedBoxes = 0;
 
@@ -57,7 +62,7 @@ namespace AICircleDetector.AI
                     float xMin = (float)predictions[0, i, 0];
                     float yMin = (float)predictions[0, i, 1];
                     float xMax = (float)predictions[0, i, 2];
-                    float yMax = (float)predictions[0, i, 3];
+                    float yMax = (float)predictions[0, i, 3];                   
 
                     bb += $"{i}: [{xMin:F4}] [{xMax:F4}] [{yMin:F4}] [{yMax:F4}]";
 
@@ -65,6 +70,7 @@ namespace AICircleDetector.AI
                     float height = yMax - yMin;
                     float ratio = width / height;
                     float area = width * height;
+
 
                     // Check coordinate validity
                     if (xMin < 0f || yMin < 0f || xMax > 1f || yMax > 1f)
@@ -95,14 +101,23 @@ namespace AICircleDetector.AI
 
                     bb += " --> " + "OK" + Environment.NewLine;
 
+                    circles.add(new Circle
+                    {
+                        XMin = xMin,
+                        YMin = yMin,
+                        XMax = xMax,
+                        YMax = yMax
+                    });
+
                 }
 
-                return $"Prediction completed:\r\nNumber of detected Circles: {detectedBoxes}\r\nBoundingBoxes:\r\n{bb}";                             
+                msg = $"Prediction completed:\r\nNumber of detected Circles: {detectedBoxes}\r\nBoundingBoxes:\r\n{bb}";
+                return new PredictionResult() { Result = msg, Circles = circles };
 
             }
             catch (Exception ex)
             {
-                return $"Prediction failed:\r\n{ex}";
+                return new PredictionResult() { Result = $"Prediction failed:\r\n{ex}" };
             }
 
         }

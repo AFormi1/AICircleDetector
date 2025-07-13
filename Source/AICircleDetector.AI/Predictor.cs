@@ -78,8 +78,8 @@ namespace AICircleDetector.AI
                         continue;
                     }
 
-                    // Filter out images, with are not sqared (+- 10%)
-                    if (ratio < 0.9f || ratio > 1.1f)
+                    // Filter out images, with are not sqared (+- 10%)                    
+                    if (ratio < 0.85f || ratio > 1.15f)
                     {
                         bb += " --> " + "Ratio" + Environment.NewLine;
                         continue;

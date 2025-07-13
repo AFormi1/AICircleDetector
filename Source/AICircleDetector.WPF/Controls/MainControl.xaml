@@ -8,11 +8,10 @@
              xmlns:vm="clr-namespace:AICircleDetector.WPF.ViewModels"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800"             
-             d:Background="#424242">
+             d:Background="#424242"
+             SizeChanged="UserControl_SizeChanged"
+             >
 
-    <UserControl.Resources>
-        <converter:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-    </UserControl.Resources>
 
     <UserControl.DataContext>
         <vm:MainControlViewModel/>
@@ -90,7 +89,10 @@
                  converter:TextBoxAutoScroller.AutoScroll="True"/>
 
             <Border BorderBrush="DarkGray" BorderThickness="2" Grid.Column="1" Margin="5" Padding="5" CornerRadius="10">
-                <Image Source="{Binding ImageToDisplay}"/>
+                <Grid>
+                    <Image Source="{Binding ImageToDisplay}" x:Name="MainImage" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    <Canvas x:Name="OverlayCanvas" IsHitTestVisible="False" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                </Grid>
             </Border>
         </Grid>
 

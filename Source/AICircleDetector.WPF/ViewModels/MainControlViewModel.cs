@@ -11,12 +11,17 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace AICircleDetector.WPF.ViewModels
 {
 
     public partial class MainControlViewModel : BaseViewModel
     {
+
+        private Canvas CanvasFromUI; 
+        private Image ImageFromUI; 
+
         private int TrainingSetsCount = 1;
 
         private CancellationTokenSource CancellationTokenSource = new CancellationTokenSource();
@@ -49,13 +54,15 @@ namespace AICircleDetector.WPF.ViewModels
         private string consoleText = string.Empty;
 
 
+      
 
         public MainControlViewModel()
-        {
+        { 
             ConsoleBindingWriter writer = new ConsoleBindingWriter(AppendConsoleLine);
             Console.SetOut(writer);
         }
 
+   
         private void AppendConsoleLine(string line)
         {
             // Run on UI thread if necessary
@@ -206,6 +213,14 @@ namespace AICircleDetector.WPF.ViewModels
                 ImageToDisplay = new BitmapImage(new Uri(filePath));
 
                 imageURL = openFileDialog.FileName;
+
+                // Delay CanvasOverlay until UI finishes rendering
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    Task.Delay(100).Wait();
+                    CanvasOverlay();
+
+                }), DispatcherPriority.Loaded);
             }
         }
 
@@ -246,6 +261,7 @@ namespace AICircleDetector.WPF.ViewModels
 
                     DataButtonEnabled = true;
                     IsBusyDataCreation = false;
+
                 });
 
 
@@ -279,8 +295,83 @@ namespace AICircleDetector.WPF.ViewModels
 
             TrainingButtonEnabled = true;
             IsBusyTraining = false;
+
         }
 
+
+        public void CanvasOverlay()
+        {
+            if (CanvasFromUI == null || ImageFromUI == null || ImageToDisplay == null) return;
+
+            CanvasFromUI.Children.Clear();                 
+
+            double width = ImageFromUI.ActualWidth;
+            double height = ImageFromUI.ActualHeight;
+
+            CanvasFromUI.Width = width;
+            CanvasFromUI.Height = height;
+
+            if (width == 0 || height == 0) return;
+
+            int linesCount = 10;
+
+            for (int i = 0; i <= linesCount; i++)
+            {
+                double fraction = i / (double)linesCount;
+
+                // Vertical line
+                var vLine = new System.Windows.Shapes.Line
+                {
+                    X1 = fraction * width,
+                    Y1 = 0,
+                    X2 = fraction * width,
+                    Y2 = height,
+                    Stroke = System.Windows.Media.Brushes.Gray,
+                    StrokeThickness = 1
+                };
+                CanvasFromUI.Children.Add(vLine);
+
+                // Vertical line label at top (e.g., 0.0, 0.1,...)
+                var vLabel = new TextBlock
+                {
+                    Text = fraction.ToString("0.0"),
+                    Foreground = System.Windows.Media.Brushes.Black,
+                    FontSize = 10
+                };
+                Canvas.SetLeft(vLabel, fraction * width);
+                Canvas.SetTop(vLabel, 0);
+                CanvasFromUI.Children.Add(vLabel);
+
+                // Horizontal line
+                var hLine = new System.Windows.Shapes.Line
+                {
+                    X1 = 0,
+                    Y1 = fraction * height,
+                    X2 = width,
+                    Y2 = fraction * height,
+                    Stroke = System.Windows.Media.Brushes.Gray,
+                    StrokeThickness = 1
+                };
+                CanvasFromUI.Children.Add(hLine);
+
+                // Horizontal line label at left side
+                var hLabel = new TextBlock
+                {
+                    Text = fraction.ToString("0.0"),
+                    Foreground = System.Windows.Media.Brushes.Black,
+                    FontSize = 10
+                };
+                Canvas.SetLeft(hLabel, 0);
+                Canvas.SetTop(hLabel, fraction * height);
+                CanvasFromUI.Children.Add(hLabel);
+            }
+        }
+
+        public void SetUpCanvas(Canvas canvas, Image image)
+        {
+            CanvasFromUI = canvas;
+            ImageFromUI = image;
+        }
     }
 
 }

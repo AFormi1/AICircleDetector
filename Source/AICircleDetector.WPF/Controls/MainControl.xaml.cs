@@ -1,5 +1,7 @@
 ﻿using AICircleDetector.WPF.ViewModels;
+using System.Drawing;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace AICircleDetector.WPF.Controls
 {
@@ -16,7 +18,14 @@ namespace AICircleDetector.WPF.Controls
         {
             InitializeComponent();
             DataContext = ViewModel;
+
+            ViewModel.SetUpCanvas(OverlayCanvas, MainImage);
         }
 
+        private void UserControl_SizeChanged(object sender, System.Windows.SizeChangedEventArgs e)
+        {
+            ViewModel.CanvasOverlay();
+        }
+      
     }
 }

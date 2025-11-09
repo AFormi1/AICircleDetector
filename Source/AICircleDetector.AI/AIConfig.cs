@@ -28,6 +28,8 @@ namespace AICircleDetector.AI
 
         public static int MaxCircles { get; private set; } = 10;
         public static int MinCircles { get; private set; } = 0;
+        public static int MinRadius { get; set; } = 20;
+        public static int MaxRadius { get; set; } = 80;
         public static int ImageShape { get; private set; } = 28;
         public static Size ImageSize { get; private set; } = new Size(128, 128);
         public static float ValidationDataSplit { get; private set; } = 0.2f;

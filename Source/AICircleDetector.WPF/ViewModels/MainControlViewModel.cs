@@ -23,7 +23,7 @@ namespace AICircleDetector.WPF.ViewModels
 
         private Canvas CanvasFromUI;
         private Image ImageFromUI;
-        private List<Circle> PredictedCircles;
+        private List<CircleAnnotation> PredictedCircles;
 
         private int TrainingSetsCount = 1;
 
@@ -96,7 +96,7 @@ namespace AICircleDetector.WPF.ViewModels
                 }
                 await Task.Run(() =>
                 {
-                    result = AI.TrainingDataBuilder.CreateTrainingData(imageCount: imageCount);
+                    result = AI.TrainingDataBuilder.GenerateData(imageCount: imageCount);
 
                     string msg = "";
                     if (result)
@@ -122,67 +122,67 @@ namespace AICircleDetector.WPF.ViewModels
         [RelayCommand]
         public async Task TrainAI()
         {
-            List<AI.AIResult> results = new();
+            //List<AI.AIResult> results = new();
 
-            ConsoleText = string.Empty;
+            //ConsoleText = string.Empty;
 
-            TrainingButtonEnabled = false;
-            IsBusyTraining = true;
+            //TrainingButtonEnabled = false;
+            //IsBusyTraining = true;
 
-            CancellationTokenSource = new CancellationTokenSource();
-            CancelToken = CancellationTokenSource.Token;
+            //CancellationTokenSource = new CancellationTokenSource();
+            //CancelToken = CancellationTokenSource.Token;
 
-            string result = string.Empty;
+            //string result = string.Empty;
 
-            try
-            {
-                OpenFolderDialog folderDialog = new OpenFolderDialog
-                {
-                    Title = "Select Folder"
-                };
+            //try
+            //{
+            //    OpenFolderDialog folderDialog = new OpenFolderDialog
+            //    {
+            //        Title = "Select Folder"
+            //    };
 
-                if (folderDialog.ShowDialog() == true)
-                {
-                    EnableConsole();
+            //    if (folderDialog.ShowDialog() == true)
+            //    {
+            //        EnableConsole();
 
-                    string folderName = folderDialog.FolderName;
+            //        string folderName = folderDialog.FolderName;
 
-                    await Task.Run(() =>
-                    {
-                        Stopwatch stopwatch = new Stopwatch();
-                        stopwatch.Start();
+            //        await Task.Run(() =>
+            //        {
+            //            Stopwatch stopwatch = new Stopwatch();
+            //            stopwatch.Start();
 
-                        result = AI.Trainer.Train(folderDialog.FolderName);
+            //            //result = AI.Trainer.Train(folderDialog.FolderName);
 
-                        stopwatch.Stop();
+            //            stopwatch.Stop();
 
-                        result += $"\r\nTraining took {stopwatch.Elapsed.TotalSeconds:F0} s";
+            //            result += $"\r\nTraining took {stopwatch.Elapsed.TotalSeconds:F0} s";
 
-                        if (result.Contains("completed"))
-                            MessageBox.Show(result, "Training completed", MessageBoxButton.OK, MessageBoxImage.Information);
-                        else
-                            MessageBox.Show(result, "Training failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            //            if (result.Contains("completed"))
+            //                MessageBox.Show(result, "Training completed", MessageBoxButton.OK, MessageBoxImage.Information);
+            //            else
+            //                MessageBox.Show(result, "Training failed", MessageBoxButton.OK, MessageBoxImage.Error);
 
-                        Console.WriteLine(result);
+            //            Console.WriteLine(result);
 
-                        DataButtonEnabled = true;
-                        IsBusyDataCreation = false;
-                    });
-                }
-                else
-                {
-                    throw new OperationCanceledException("Folder selection was cancelled.");
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                TrainingButtonEnabled = true;
-                IsBusyTraining = false;
-            }
+            //            DataButtonEnabled = true;
+            //            IsBusyDataCreation = false;
+            //        });
+            //    }
+            //    else
+            //    {
+            //        throw new OperationCanceledException("Folder selection was cancelled.");
+            //    }
+            //}
+            //catch (Exception ex)
+            //{
+            //    MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            //}
+            //finally
+            //{
+            //    TrainingButtonEnabled = true;
+            //    IsBusyTraining = false;
+            //}
         }
 
         private void EnableConsole()
@@ -249,26 +249,26 @@ namespace AICircleDetector.WPF.ViewModels
                     Stopwatch stopwatch = new Stopwatch();
                     stopwatch.Start();
 
-                    PredictionResult result;
+                    //PredictionResult result;
 
-                    result = AI.Predictor.Predict(imageURL);
+                    //result = AI.Predictor.Predict(imageURL);
 
                     stopwatch.Stop();
 
-                    result.Result += $"\r\nPrediction took {stopwatch.Elapsed.TotalMilliseconds:F0} ms";
+                    //result.Result += $"\r\nPrediction took {stopwatch.Elapsed.TotalMilliseconds:F0} ms";
 
-                    if (result.Result.Contains("completed"))
-                        MessageBox.Show(result.Result, "Prediction finished", MessageBoxButton.OK, MessageBoxImage.Information);
-                    else
-                        MessageBox.Show(result.Result, "Prediction failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    //if (result.Result.Contains("completed"))
+                    //    MessageBox.Show(result.Result, "Prediction finished", MessageBoxButton.OK, MessageBoxImage.Information);
+                    //else
+                    //    MessageBox.Show(result.Result, "Prediction failed", MessageBoxButton.OK, MessageBoxImage.Error);
 
-                    Console.WriteLine(result);
+                    //Console.WriteLine(result);
 
-                    DataButtonEnabled = true;
-                    IsBusyDataCreation = false;
+                    //DataButtonEnabled = true;
+                    //IsBusyDataCreation = false;
 
-                    //Draw the circles on the canvas
-                    PredictedCircles = result.Circles;
+                    ////Draw the circles on the canvas
+                    //PredictedCircles = result.Circles;
 
                     // Delay CanvasOverlay until UI finishes rendering
                     Application.Current.Dispatcher.BeginInvoke(new Action(() =>

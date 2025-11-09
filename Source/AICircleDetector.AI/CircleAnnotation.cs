@@ -8,7 +8,10 @@ namespace AICircleDetector.AI
 {
     public class CircleAnnotation
     {
-        public string filename { get; set; }
-        public List<BoundingBox> circles { get; set; }
+        public string Label { get; set; } = "circle";
+        public float XMin { get; set; }
+        public float YMin { get; set; }
+        public float XMax { get; set; }
+        public float YMax { get; set; }
     }
 }

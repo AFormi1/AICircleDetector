@@ -100,23 +100,34 @@ namespace AICircleDetector.AI
             var y_true = tf.placeholder(tf.float32, shape: new Shape(-1, 1 + (AIConfig.MaxCircles * 4)));
 
 
-            var model = new Sequential(new Tensorflow.Keras.ArgsDefinition.SequentialArgs());
-            // Conv2D Layer mit Args
-            var conv1Args = new Tensorflow.Keras.ArgsDefinition.Conv2DArgs
+            string modelPath = AIConfig.TrainingModelFullURL;
+            IModel model;
+
+            if (Directory.Exists(modelPath) && Directory.GetDirectories(modelPath).Length > 0)
             {
-                Filters = 32,
-                KernelSize = (3, 3),
-                Activation = new relu(),
-                InputShape = new Shape(AIConfig.ImageSize.Width, AIConfig.ImageSize.Height, 3)
-            };
+                // Modell laden, falls vorhanden
+                model = tf.keras.models.load_model(modelPath);
+            }
+            else
+            {
+                // Input Tensor
+                var input = tf.keras.Input(shape: (AIConfig.ImageSize.Width, AIConfig.ImageSize.Height, 3));
 
-            model.Add(new Conv2D(conv1Args)); model.Add(new MaxPooling2D(pool_size: 2, strides: 2));
-            model.Add(new Conv2D(64, kernel_size: 3, activation: tf.nn.relu));
-            model.Add(new MaxPooling2D(pool_size: 2, strides: 2));
-            model.Add(new Flatten());
-            model.Add(new Dense(128, activation: tf.nn.relu));
-            model.Add(new Dense(1 + (AIConfig.MaxCircles * 4)));
+                // CNN
+                Tensor cnn = new Conv2D(32, (3, 3), activation: tf.keras.activations.Relu).Apply(input);
+                cnn = new MaxPooling2D(pool_size: (2, 2)).Apply(cnn);
+                cnn = new Conv2D(64, (3, 3), activation: keras.activations.Relu).Apply(cnn);
+                cnn = new MaxPooling2D(pool_size: (2, 2)).Apply(cnn);
+                cnn = new Flatten().Apply(cnn);
+                cnn = new Dense(128, activation: keras.activations.Relu).Apply(cnn);
 
+                // Output für Bounding Boxes
+                Tensor bbox_output = new Dense(AIConfig.MaxCircles * 4, activation: keras.activations.Sigmoid).Apply(cnn);
+                bbox_output = new Reshape((AIConfig.MaxCircles, 4)).Apply(bbox_output);
+
+                // Modell erstellen
+                model = keras.Model(input, bbox_output);
+            }
 
 
             // Loss: mean squared error for regression targets

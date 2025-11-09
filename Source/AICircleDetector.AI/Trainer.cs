@@ -23,6 +23,19 @@ namespace AICircleDetector.AI
         {
             try
             {
+                //cuda setup https://github.com/SciSharp/TensorFlow.NET/wiki/Using-GPU-with-Tensorflow.NET
+                //we have installed cuda 13.0
+
+                Tensorflow.Device.PhysicalDevice[] devices = tf.config.list_physical_devices("GPU");
+
+                foreach (var device in devices)
+                {
+                    if (device.DeviceType.Contains("GPU") || device.DeviceName.Contains("GPU"))
+                    {
+                        Console.WriteLine($"TensorFlow detected following GPU: {devices.Length} GPU(s)");
+                    }                    
+                }              
+
                 int epochs = 100;
                 int batchSize = 128;
 

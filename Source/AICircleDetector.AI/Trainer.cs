@@ -132,8 +132,9 @@ namespace AICircleDetector.AI
 
             // Modell kompilieren
             model.compile(
-                optimizer: tf.keras.optimizers.Adam(0.001f),
-                loss: "mse" // Mean Squared Error für Bounding Box Regression
+                    optimizer: tf.keras.optimizers.Adam(),
+                    loss: tf.keras.losses.MeanSquaredError(),
+                    metrics: new[] { "mean_absolute_error" }
             );
 
             // Trainieren

@@ -122,42 +122,23 @@ namespace AICircleDetector.AI
                 cnn = tf.keras.layers.Dense(128, activation: tf.keras.activations.Relu).Apply(x);
 
                 // Output für Bounding Boxes
-                Tensor bbox_output = new Dense(AIConfig.MaxCircles * 4, activation: tf.keras.activations.Sigmoid).Apply(cnn);
-                bbox_output = new Reshape((AIConfig.MaxCircles, 4)).Apply(bbox_output);
+                var bbox_output = tf.keras.layers.Dense(AIConfig.MaxCircles * 4, activation: tf.keras.activations.Sigmoid).Apply(x);
+                bbox_output = tf.keras.layers.Reshape((AIConfig.MaxCircles, 4)).Apply(bbox_output);
 
                 // Modell erstellen
                 model = tf.keras.Model(input, bbox_output);
             }
 
 
-            // Loss: mean squared error for regression targets
-            var loss = tf.reduce_mean(tf.square(output - y_true));
-            var optimizer = tf.train.AdamOptimizer(0.001f).minimize(loss);
+            // Modell kompilieren
+            model.compile(
+                optimizer: tf.keras.optimizers.Adam(0.001f),
+                loss: "mse" // Mean Squared Error für Bounding Box Regression
+            );
 
-            // --- Step 3: Train ---
-            session.run(tf.global_variables_initializer());
+            // Trainieren
+            model.fit(x, y, batch_size: 16, epochs: 10);
 
-            int epochs = 10;
-            int batchSize = 16;
-
-            for (int epoch = 1; epoch <= epochs; epoch++)
-            {
-                float epochLoss = 0;
-                for (int i = 0; i < x.shape[0]; i += batchSize)
-                {
-                    var end = Math.Min(i + batchSize, (int)x.shape[0]);
-                    var batchX = x[new Slice(i, end)];
-                    var batchY = y[new Slice(i, end)];
-
-                    var (_, lossVal) = session.run((optimizer, loss),
-                        (x_input, batchX),
-                        (y_true, batchY));
-
-                    epochLoss += lossVal;
-                }
-
-                Console.WriteLine($"Epoch {epoch}/{epochs} — Loss: {epochLoss / (x.shape[0] / batchSize):F4}");
-            }
 
             // --- Step 4: Save Model ---
             string savePath = Path.Combine(AIConfig.TrainingModelFullURL, AIConfig.TrainingModelName);

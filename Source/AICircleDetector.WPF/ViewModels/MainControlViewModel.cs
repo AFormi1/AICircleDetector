@@ -96,7 +96,7 @@ namespace AICircleDetector.WPF.ViewModels
                 }
                 await Task.Run(() =>
                 {
-                    result = AI.TrainingDataBuilder.GenerateData(imageCount: imageCount);
+                    result = AI.TrainingDataBuilder.GenerateTrainingData(imageCount);
 
                     string msg = "";
                     if (result)
